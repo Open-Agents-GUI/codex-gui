@@ -97,7 +97,7 @@ let
         "$out/share/applications/codex-gui.desktop"
       install -Dm644 \
         ${icon} \
-        "$out/share/icons/hicolor/scalable/apps/codex-gui.svg"
+        "$out/share/icons/hicolor/1024x1024/apps/codex-gui.png"
     '';
     meta = {
       description = "Native desktop GUI for Codex";

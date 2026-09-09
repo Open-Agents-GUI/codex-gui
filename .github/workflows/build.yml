@@ -101,6 +101,7 @@ jobs:
         run: |
           test -x result-package/bin/codex-gui
           test -x result-package/bin/codex-code-mode-host
+          test -f result-package/share/icons/hicolor/1024x1024/apps/codex-gui.png
           test "$(dirname "$(readlink -f result-package/bin/codex-gui)")" = \
                "$(dirname "$(readlink -f result-package/bin/codex-code-mode-host)")"
       - name: Upload Linux artifacts
@@ -137,6 +138,8 @@ jobs:
           test -x "verify-macos/Codex GUI.app/Contents/MacOS/codex-gui"
           test -x "verify-macos/Codex GUI.app/Contents/MacOS/codex-code-mode-host"
           test -d "verify-macos/Codex GUI.app/Contents/Frameworks"
+          test -f "verify-macos/Codex GUI.app/Contents/Resources/codex-gui.icns"
+          test "$(plutil -extract CFBundleIconFile raw -o - "verify-macos/Codex GUI.app/Contents/Info.plist")" = "codex-gui"
           codesign --verify --deep --strict "verify-macos/Codex GUI.app"
           file "verify-macos/Codex GUI.app/Contents/MacOS/"*
       - name: Upload macOS artifact

@@ -15,7 +15,6 @@ pub(super) fn build_transcript(
     chat: &ChatState,
     chat_source: WeakEntity<ChatState>,
     expanded_turns: &HashSet<String>,
-    expanded_reasoning_blocks: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
 ) -> TranscriptSnapshot {
     let mut transcript = TranscriptSnapshot::new();
@@ -30,7 +29,6 @@ pub(super) fn build_transcript(
                 turn,
                 previous_turn_id.as_deref(),
                 expanded_turns,
-                expanded_reasoning_blocks,
                 expanded_tool_groups,
             );
             if !turn
@@ -131,7 +129,6 @@ fn append_turn(
     turn: &Turn,
     previous_turn_id: Option<&str>,
     expanded_turns: &HashSet<String>,
-    expanded_reasoning_blocks: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
 ) {
     let Some(fold) = completed_turn_fold(turn) else {
@@ -142,7 +139,6 @@ fn append_turn(
             &turn.id,
             previous_turn_id,
             &turn.items,
-            expanded_reasoning_blocks,
             expanded_tool_groups,
         );
         return;
@@ -155,7 +151,6 @@ fn append_turn(
         &turn.id,
         previous_turn_id,
         &turn.items[..=fold.user_index],
-        expanded_reasoning_blocks,
         expanded_tool_groups,
     );
 
@@ -174,7 +169,6 @@ fn append_turn(
             &turn.id,
             previous_turn_id,
             &turn.items[fold.user_index + 1..],
-            expanded_reasoning_blocks,
             expanded_tool_groups,
         );
     } else if let Some(final_answer) = turn.items.get(fold.final_index) {
@@ -198,7 +192,6 @@ fn append_items(
     turn_id: &str,
     previous_turn_id: Option<&str>,
     items: &[ThreadItem],
-    expanded_reasoning_blocks: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
 ) {
     let mut index = 0;
@@ -226,10 +219,10 @@ fn append_items(
                 index += 1;
             }
             ThreadItem::AgentMessage { .. } => {
-                let tools_end = tool_group_end(items, index + 1, |id| chat.item_is_streaming(id));
+                let tools_end = tool_group_end(items, index + 1);
                 let tools = items[index + 1..tools_end]
                     .iter()
-                    .filter(|item| is_tool_item(item))
+                    .filter(|item| is_tool_group_item(item))
                     .collect::<Vec<_>>();
                 append_agent(
                     transcript,
@@ -253,44 +246,6 @@ fn append_items(
                     TranscriptLayoutTarget::Item(id.clone()),
                     super::blocks::BlockId::new("plan", id),
                 );
-                index += 1;
-            }
-            ThreadItem::Reasoning {
-                id,
-                summary,
-                content,
-            } => {
-                let mut body = summary
-                    .iter()
-                    .filter(|part| !part.is_empty())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                let content = content
-                    .iter()
-                    .filter(|part| !part.is_empty())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                if !content.is_empty() {
-                    if !body.is_empty() {
-                        body.push_str("\n\n");
-                    }
-                    body.push_str(&content);
-                }
-                let running = chat.item_is_streaming(id);
-                if running || !body.is_empty() {
-                    transcript.push_block(HistoryBlock::Reasoning {
-                        key: id.clone(),
-                        body: body.into(),
-                        running,
-                        expanded: expanded_reasoning_blocks.contains(id),
-                    });
-                    transcript.map_layout_target(
-                        TranscriptLayoutTarget::Item(id.clone()),
-                        super::blocks::BlockId::new("reasoning", id),
-                    );
-                }
                 index += 1;
             }
             ThreadItem::HookPrompt { id, fragments } => {
@@ -366,11 +321,11 @@ fn append_items(
                 );
                 index += 1;
             }
-            item if is_tool_item(item) => {
-                let tools_end = tool_group_end(items, index, |id| chat.item_is_streaming(id));
+            item if is_tool_group_item(item) => {
+                let tools_end = tool_group_end(items, index);
                 let tools = items[index..tools_end]
                     .iter()
-                    .filter(|item| is_tool_item(item))
+                    .filter(|item| is_tool_group_item(item))
                     .collect::<Vec<_>>();
                 append_tool_group(
                     transcript,
@@ -470,18 +425,17 @@ fn append_tool_group(
     }
 }
 
-fn tool_group_end(
-    items: &[ThreadItem],
-    start: usize,
-    is_streaming: impl Fn(&str) -> bool,
-) -> usize {
-    if items.get(start).is_none_or(|item| !is_tool_item(item)) {
+fn tool_group_end(items: &[ThreadItem], start: usize) -> usize {
+    if items
+        .get(start)
+        .is_none_or(|item| !is_tool_group_item(item))
+    {
         return start;
     }
 
     let mut end = start;
     while let Some(item) = items.get(end) {
-        if is_tool_item(item) || is_completed_empty_reasoning(item, &is_streaming) {
+        if is_tool_group_item(item) {
             end += 1;
         } else {
             break;
@@ -491,33 +445,11 @@ fn tool_group_end(
 }
 
 fn tool_group_is_tail(items: &[ThreadItem], start: usize, end: usize) -> bool {
-    let Some(last_tool_index) = (start..end)
-        .rev()
-        .find(|index| is_tool_item(&items[*index]))
-    else {
-        return false;
-    };
-
-    match &items[last_tool_index + 1..] {
-        [] => true,
-        [item] => is_empty_reasoning(item),
-        _ => false,
-    }
+    start < end && end == items.len()
 }
 
-fn is_completed_empty_reasoning(item: &ThreadItem, is_streaming: &impl Fn(&str) -> bool) -> bool {
-    !is_streaming(item.id()) && is_empty_reasoning(item)
-}
-
-fn is_empty_reasoning(item: &ThreadItem) -> bool {
-    let ThreadItem::Reasoning {
-        summary, content, ..
-    } = item
-    else {
-        return false;
-    };
-
-    summary.iter().all(String::is_empty) && content.iter().all(String::is_empty)
+fn is_tool_group_item(item: &ThreadItem) -> bool {
+    is_tool_item(item) || matches!(item, ThreadItem::Reasoning { .. })
 }
 
 struct TurnFold {
@@ -636,35 +568,35 @@ mod tests {
             sleep_tool("tool-2"),
         ];
 
-        assert_eq!(tool_group_end(&items, 0, |_| false), items.len());
+        assert_eq!(tool_group_end(&items, 0), items.len());
     }
 
     #[test]
-    fn tool_group_stops_at_non_empty_reasoning() {
+    fn tool_group_includes_non_empty_reasoning() {
         let items = vec![
             sleep_tool("tool-1"),
             reasoning("reasoning-1", "Still investigating"),
             sleep_tool("tool-2"),
         ];
 
-        assert_eq!(tool_group_end(&items, 0, |_| false), 1);
+        assert_eq!(tool_group_end(&items, 0), items.len());
     }
 
     #[test]
-    fn tool_group_stops_at_streaming_empty_reasoning() {
+    fn tool_group_includes_streaming_empty_reasoning() {
         let items = vec![
             sleep_tool("tool-1"),
             reasoning("reasoning-1", ""),
             sleep_tool("tool-2"),
         ];
 
-        assert_eq!(tool_group_end(&items, 0, |id| id == "reasoning-1"), 1);
+        assert_eq!(tool_group_end(&items, 0), items.len());
     }
 
     #[test]
     fn last_tool_group_is_tail() {
         let items = vec![sleep_tool("tool-1")];
-        let end = tool_group_end(&items, 0, |_| false);
+        let end = tool_group_end(&items, 0);
 
         assert!(tool_group_is_tail(&items, 0, end));
     }
@@ -672,7 +604,7 @@ mod tests {
     #[test]
     fn tool_group_before_one_empty_reasoning_is_tail() {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
-        let end = tool_group_end(&items, 0, |_| false);
+        let end = tool_group_end(&items, 0);
 
         assert!(tool_group_is_tail(&items, 0, end));
     }
@@ -680,32 +612,32 @@ mod tests {
     #[test]
     fn tool_group_before_streaming_empty_reasoning_is_tail() {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
-        let end = tool_group_end(&items, 0, |id| id == "reasoning-1");
+        let end = tool_group_end(&items, 0);
 
         assert!(tool_group_is_tail(&items, 0, end));
     }
 
     #[test]
-    fn tool_group_before_other_content_is_not_tail() {
+    fn tool_group_ending_in_reasoning_is_tail() {
         let items = vec![
             sleep_tool("tool-1"),
             reasoning("reasoning-1", "Still investigating"),
         ];
-        let end = tool_group_end(&items, 0, |_| false);
+        let end = tool_group_end(&items, 0);
 
-        assert!(!tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end));
     }
 
     #[test]
-    fn tool_group_before_two_empty_reasoning_items_is_not_tail() {
+    fn tool_group_includes_multiple_reasoning_items_at_tail() {
         let items = vec![
             sleep_tool("tool-1"),
             reasoning("reasoning-1", ""),
             reasoning("reasoning-2", ""),
         ];
-        let end = tool_group_end(&items, 0, |_| false);
+        let end = tool_group_end(&items, 0);
 
-        assert!(!tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end));
     }
 
     fn sleep_tool(id: &str) -> ThreadItem {

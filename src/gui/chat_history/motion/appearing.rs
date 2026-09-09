@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, AvailableSpace, Bounds, ContentMask, Element,
-    ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Style, Window,
-    div, relative, size, prelude::*
+    AnyElement, App, AvailableSpace, Bounds, ContentMask, Element, ElementId, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, Pixels, Style, Window, div, prelude::*, relative,
+    size,
 };
 use gpui_component::animation::ease_out_cubic;
 
@@ -12,7 +12,6 @@ const APPEAR_DURATION: Duration = Duration::from_millis(240);
 #[derive(Clone, Copy, Default)]
 struct AppearingState {
     natural_height: Option<Pixels>,
-    started_at: Option<Instant>,
 }
 
 /// Reveals newly inserted transcript content from zero to its natural height.
@@ -23,29 +22,28 @@ struct AppearingState {
 pub struct Appearing {
     id: ElementId,
     child: AnyElement,
+    appeared_at: Option<Instant>,
     animate: bool,
 }
 
 impl Appearing {
-    pub fn new(id: String, child: impl IntoElement, animate: bool) -> Self {
-        let child = child.into_any_element();
-        let child = if animate {
-            div()
-                .w_full()
-                .child(child)
-                .with_animation(
-                    format!("{id}-fade"),
-                    Animation::new(APPEAR_DURATION).with_easing(ease_out_cubic),
-                    |this, progress| this.opacity(progress),
-                )
-                .into_any_element()
-        } else {
-            child
-        };
+    pub fn new(
+        id: String,
+        child: impl IntoElement,
+        appeared_at: Option<Instant>,
+        animate: bool,
+    ) -> Self {
+        let progress = appear_progress(appeared_at, animate, Instant::now());
+        let child = div()
+            .w_full()
+            .opacity(progress)
+            .child(child)
+            .into_any_element();
 
         Self {
             id: id.into(),
             child,
+            appeared_at,
             animate,
         }
     }
@@ -85,7 +83,7 @@ impl Element for Appearing {
                 (state, state)
             },
         );
-        let progress = appear_progress(state.started_at, self.animate, Instant::now());
+        let progress = appear_progress(self.appeared_at, self.animate, Instant::now());
 
         let mut style = Style::default();
         style.size.width = relative(1.).into();
@@ -113,20 +111,17 @@ impl Element for Appearing {
         );
         let measured = self.child.layout_as_root(available, window, cx);
         let now = Instant::now();
-        let (changed, started_at) = window.with_element_state(
+        let changed = window.with_element_state(
             global_id.expect("Appearing must have an id"),
             |state: Option<AppearingState>, _| {
                 let mut state = state.unwrap_or_default();
                 let changed = state.natural_height != Some(measured.height);
                 state.natural_height = Some(measured.height);
-                if self.animate && state.started_at.is_none() {
-                    state.started_at = Some(now);
-                }
-                ((changed, state.started_at), state)
+                (changed, state)
             },
         );
 
-        if changed || appear_progress(started_at, self.animate, now) < 1. {
+        if changed || appear_progress(self.appeared_at, self.animate, now) < 1. {
             window.request_animation_frame();
         }
 
@@ -156,7 +151,7 @@ fn appear_progress(started_at: Option<Instant>, animate: bool, now: Instant) -> 
         return 1.;
     }
     let Some(started_at) = started_at else {
-        return 0.;
+        return 1.;
     };
     let linear = (now.saturating_duration_since(started_at).as_secs_f32()
         / APPEAR_DURATION.as_secs_f32())

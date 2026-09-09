@@ -56,13 +56,14 @@
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
           codexGuiDefinition = import ./nix/codex-gui.nix {
             inherit craneLib pkgs version;
-            icon = ./packaging/codex-gui.svg;
+            icon = ./packaging/codex-gui.png;
             projectRoot = ./.;
             quickjsRuntimeSrc = ./crates/codex-code-mode-runtime-quickjs/src;
           };
           codex-gui = codexGuiDefinition.package;
           macosApp = import ./nix/macos_app.nix {
             codexGui = codex-gui;
+            iconSource = ./packaging/codex-gui.png;
             inherit pkgs version;
           };
           macosArchive = import ./nix/macos_archive.nix {

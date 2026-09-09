@@ -34,6 +34,7 @@ pub use gallery::ToolGallery;
 
 #[derive(Clone, IntoElement)]
 pub(in crate::gui::chat_history) enum ToolCall {
+    Reasoning(ReasoningTool),
     Command(CommandTool),
     FileChange(FileChangeTool),
     Mcp(McpTool),
@@ -54,6 +55,9 @@ impl ToolCall {
     ) -> Option<Self> {
         let status = tool_status(item, streaming);
         Some(match item {
+            ThreadItem::Reasoning {
+                summary, content, ..
+            } => Self::Reasoning(ReasoningTool::new(summary, content, status)),
             ThreadItem::CommandExecution { .. } => {
                 Self::Command(CommandTool::new(item, status, progress, chat)?)
             }
@@ -79,6 +83,7 @@ impl ToolCall {
 
     fn status(&self) -> ToolStatus {
         match self {
+            Self::Reasoning(reasoning) => reasoning.status(),
             Self::Command(tool) => tool.status(),
             Self::FileChange(tool) => tool.status(),
             Self::Mcp(tool) => tool.status(),
@@ -90,11 +95,16 @@ impl ToolCall {
             Self::ImageGeneration(tool) => tool.status(),
         }
     }
+
+    fn is_reasoning(&self) -> bool {
+        matches!(self, Self::Reasoning(_))
+    }
 }
 
 impl RenderOnce for ToolCall {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         match self {
+            Self::Reasoning(reasoning) => SimpleToolElement::new(reasoning).into_any_element(),
             Self::Command(tool) => tool.into_any_element(),
             Self::FileChange(tool) => tool.into_any_element(),
             Self::Mcp(tool) => SimpleToolElement::new(tool).into_any_element(),
@@ -158,15 +168,17 @@ pub(super) fn render_group(
 }
 
 fn render_summary(tools: &[ToolCall], theme: &Theme) -> gpui::Div {
+    let tool_count = tools.iter().filter(|tool| !tool.is_reasoning()).count();
     let running = tools
         .iter()
+        .filter(|tool| !tool.is_reasoning())
         .filter(|tool| matches!(tool.status(), ToolStatus::Running))
         .count();
     let failed = tools
         .iter()
+        .filter(|tool| !tool.is_reasoning())
         .filter(|tool| matches!(tool.status(), ToolStatus::Failed))
         .count();
-
     h_flex()
         .min_w_0()
         .items_center()
@@ -189,16 +201,11 @@ fn render_summary(tools: &[ToolCall], theme: &Theme) -> gpui::Div {
         )
         .child(div().min_w_0().flex_1().truncate().child(if running > 0 {
             format!(
-                "Running {} {}",
-                tools.len(),
-                pluralize(tools.len(), "tool call")
+                "Running {tool_count} {}",
+                pluralize(tool_count, "tool call")
             )
         } else {
-            format!(
-                "Ran {} {}",
-                tools.len(),
-                pluralize(tools.len(), "tool call")
-            )
+            format!("Ran {tool_count} {}", pluralize(tool_count, "tool call"))
         }))
         .when(failed > 0, |summary| {
             summary.child(
@@ -265,6 +272,61 @@ pub(in crate::gui::chat_history) fn tool_calls(
         .collect()
 }
 
+#[derive(Clone)]
+pub(in crate::gui::chat_history) struct ReasoningTool {
+    title: SharedString,
+    detail: Option<SharedString>,
+    status: ToolStatus,
+}
+
+impl ReasoningTool {
+    fn new(summary: &[String], content: &[String], status: ToolStatus) -> Self {
+        let body = summary
+            .iter()
+            .chain(content)
+            .filter(|part| !part.is_empty())
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n\n")
+            .replace("**", "");
+        let last_line = body
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|line| !line.is_empty());
+        Self {
+            title: last_line
+                .map(|line| format!("Reasoning: {line}"))
+                .unwrap_or_else(|| "Reasoning".to_string())
+                .into(),
+            detail: (!body.is_empty()).then(|| body.into()),
+            status,
+        }
+    }
+
+    fn status(&self) -> ToolStatus {
+        self.status
+    }
+}
+
+impl SimpleTool for ReasoningTool {
+    fn icon(&self) -> IconName {
+        IconName::Bot
+    }
+
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+
+    fn detail(&self) -> Option<SharedString> {
+        self.detail.clone()
+    }
+
+    fn status(&self) -> ToolStatus {
+        self.status
+    }
+}
+
 pub(in crate::gui::chat_history) fn is_tool_item(item: &ThreadItem) -> bool {
     matches!(
         item,
@@ -292,6 +354,13 @@ pub(in crate::gui::chat_history) fn tools_done(
 
 fn tool_status(item: &ThreadItem, streaming: bool) -> ToolStatus {
     match item {
+        ThreadItem::Reasoning { .. } => {
+            if streaming {
+                ToolStatus::Running
+            } else {
+                ToolStatus::Succeeded
+            }
+        }
         ThreadItem::CommandExecution { status, .. } => match status {
             CommandExecutionStatus::InProgress => ToolStatus::Running,
             CommandExecutionStatus::Completed => ToolStatus::Succeeded,

@@ -5,7 +5,6 @@ mod input_request;
 mod messages;
 mod notices;
 mod plan;
-mod reasoning;
 mod tools;
 mod worked_summary;
 
@@ -92,12 +91,6 @@ pub(super) enum HistoryBlock {
         body: SharedString,
         running: bool,
     },
-    Reasoning {
-        key: String,
-        body: SharedString,
-        running: bool,
-        expanded: bool,
-    },
     HookPrompt {
         key: String,
         body: SharedString,
@@ -131,7 +124,6 @@ impl HistoryBlock {
             Self::Notice { key, .. } => BlockId::new("notice", key),
             Self::Activity { key, .. } => BlockId::new("activity", key),
             Self::Plan { key, .. } => BlockId::new("plan", key),
-            Self::Reasoning { key, .. } => BlockId::new("reasoning", key),
             Self::HookPrompt { key, .. } => BlockId::new("hook-prompt", key),
             Self::Approval { approval } => {
                 BlockId::new("approval", &approval.request_id.to_string())
@@ -222,34 +214,6 @@ pub(super) fn render(
         HistoryBlock::Plan { body, running, .. } => {
             plan::render(body, running, cx.theme()).into_any_element()
         }
-        HistoryBlock::Reasoning {
-            key,
-            body,
-            running,
-            expanded,
-        } => {
-            let toggle_history = history.clone();
-            let toggle_key = key.clone();
-            let content = reasoning::render(
-                &key,
-                body,
-                running,
-                expanded,
-                running && !cx.reduce_motion(),
-                cx.theme(),
-                move |cx| {
-                    let key = toggle_key.clone();
-                    let _ =
-                        toggle_history.update(cx, |history, cx| history.toggle_reasoning(&key, cx));
-                },
-            );
-            Appearing::new(
-                format!("reasoning-appear-{key}"),
-                content,
-                !cx.reduce_motion(),
-            )
-            .into_any_element()
-        }
         HistoryBlock::HookPrompt { body, .. } => {
             context::render_hook_prompt(body, cx.theme()).into_any_element()
         }
@@ -310,6 +274,10 @@ pub(super) fn render(
         } => {
             let history = history.clone();
             let toggle_key = key.clone();
+            let block_id = BlockId::tool_group(&key);
+            let appeared_at = history
+                .read_with(cx, |history, _| history.block_appeared_at(&block_id))
+                .unwrap_or(None);
             let content = tools::render_group(
                 &key,
                 &tools,
@@ -325,6 +293,7 @@ pub(super) fn render(
             Appearing::new(
                 format!("tool-group-appear-{key}"),
                 content,
+                appeared_at,
                 !cx.reduce_motion(),
             )
             .into_any_element()

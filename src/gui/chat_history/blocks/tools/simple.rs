@@ -116,12 +116,13 @@ impl RenderOnce for ToolFrame {
                     .flex_1()
                     .flex()
                     .flex_col()
-                    .gap_1p5()
+                    .gap_2()
                     .child(
                         div()
                             .min_w_0()
                             .truncate()
                             .whitespace_nowrap()
+                            .line_height(px(20.))
                             .font_medium()
                             .text_color(theme.foreground)
                             .child(self.title),

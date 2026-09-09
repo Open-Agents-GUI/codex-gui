@@ -1,7 +1,7 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use codex_app_server_protocol::RequestId;
@@ -31,13 +31,14 @@ pub struct ChatHistory {
     _state_subscription: Subscription,
     chat_subscription: Option<Subscription>,
     expanded_turns: HashSet<String>,
-    expanded_reasoning_blocks: HashSet<String>,
     expanded_tool_groups: HashSet<String>,
     transcript: Entity<TextViewState>,
     transcript_extensions: MarkdownExtensions,
     transcript_blocks: TranscriptBlockStore,
     transcript_markdown: String,
     transcript_chat_id: Option<String>,
+    block_appeared_at: HashMap<BlockId, Instant>,
+    backfill_existing_chat: bool,
     transcript_layout_revision: u64,
     send_animation: Option<SendAnimationLaunch>,
 }
@@ -78,6 +79,9 @@ pub(crate) enum ChatHistoryEvent {
 impl ChatHistory {
     pub fn new(state: Entity<WorkspaceState>, cx: &mut Context<Self>) -> Self {
         let active_chat = active_chat_entity(&state, cx);
+        let backfill_existing_chat = active_chat
+            .as_ref()
+            .is_some_and(|chat| chat.read(cx).thread.is_some());
         let chat_subscription = subscribe_to_chat(active_chat.as_ref(), cx);
         let state_subscription = cx.observe(&state, |history, _, cx| {
             history.update_active_chat_subscription(cx);
@@ -96,13 +100,14 @@ impl ChatHistory {
             _state_subscription: state_subscription,
             chat_subscription,
             expanded_turns: HashSet::new(),
-            expanded_reasoning_blocks: HashSet::new(),
             expanded_tool_groups: HashSet::new(),
             transcript,
             transcript_extensions,
             transcript_blocks,
             transcript_markdown: String::new(),
             transcript_chat_id: None,
+            block_appeared_at: HashMap::new(),
+            backfill_existing_chat,
             transcript_layout_revision: 0,
             send_animation: None,
         };
@@ -128,13 +133,16 @@ impl ChatHistory {
         }
 
         self.chat_subscription = subscribe_to_chat(active_chat.as_ref(), cx);
+        self.backfill_existing_chat = active_chat
+            .as_ref()
+            .is_some_and(|chat| chat.read(cx).thread.is_some());
         self.active_chat = active_chat;
         self.expanded_turns.clear();
-        self.expanded_reasoning_blocks.clear();
         self.expanded_tool_groups.clear();
         self.transcript = new_transcript(cx);
         self.transcript_markdown.clear();
         self.transcript_chat_id = None;
+        self.block_appeared_at.clear();
         self.transcript_layout_revision = 0;
         self.rebuild_transcript(cx);
     }
@@ -170,6 +178,10 @@ impl ChatHistory {
             .cloned()
     }
 
+    pub(super) fn block_appeared_at(&self, block_id: &BlockId) -> Option<Instant> {
+        self.block_appeared_at.get(block_id).copied()
+    }
+
     fn expire_waiting_send_animation(&mut self, client_id: &str, cx: &mut Context<Self>) {
         let should_expire = self
             .send_animation
@@ -197,14 +209,6 @@ impl ChatHistory {
             self.expanded_turns.insert(turn_id.to_string());
         }
         self.rebuild_transcript(cx);
-        cx.notify();
-    }
-
-    pub(super) fn toggle_reasoning(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        if !self.expanded_reasoning_blocks.remove(item_id) {
-            self.expanded_reasoning_blocks.insert(item_id.to_string());
-        }
-        self.rebuild_transcript_remeasuring(Some(BlockId::new("reasoning", item_id)), cx);
         cx.notify();
     }
 
@@ -307,22 +311,23 @@ impl ChatHistory {
                 None,
                 TranscriptSnapshot::new(),
                 false,
+                false,
                 changed_block.into_iter().collect(),
                 cx,
             );
             return;
         };
         let chat_source = chat.downgrade();
-        let (chat_id, snapshot, layout_changes) = chat.read_with(cx, |chat, _| {
+        let (chat_id, snapshot, is_loading, layout_changes) = chat.read_with(cx, |chat, _| {
             (
                 chat.id.clone(),
                 build_transcript(
                     chat,
                     chat_source,
                     &self.expanded_turns,
-                    &self.expanded_reasoning_blocks,
                     &self.expanded_tool_groups,
                 ),
+                chat.is_loading,
                 chat.transcript_layout_changes_since(self.transcript_layout_revision),
             )
         });
@@ -336,6 +341,7 @@ impl ChatHistory {
         self.sync_transcript(
             Some(chat_id),
             snapshot,
+            is_loading,
             layout_changes.all,
             changed_blocks,
             cx,
@@ -346,15 +352,34 @@ impl ChatHistory {
         &mut self,
         chat_id: Option<String>,
         snapshot: TranscriptSnapshot,
+        chat_is_loading: bool,
         remeasure_all: bool,
         changed_blocks: HashSet<BlockId>,
         cx: &mut Context<Self>,
     ) {
+        let same_chat = self.transcript_chat_id == chat_id;
+        let now = Instant::now();
+        let already_appeared = now.checked_sub(Duration::from_secs(60)).unwrap_or(now);
+        let appeared_at = if same_chat && !self.backfill_existing_chat {
+            now
+        } else {
+            already_appeared
+        };
+        self.block_appeared_at
+            .retain(|id, _| snapshot.blocks.contains_key(id));
+        for id in snapshot.blocks.keys() {
+            self.block_appeared_at
+                .entry(id.clone())
+                .or_insert(appeared_at);
+        }
+        if self.backfill_existing_chat && !chat_is_loading {
+            self.backfill_existing_chat = false;
+        }
+
         if let Ok(mut blocks) = self.transcript_blocks.write() {
             *blocks = snapshot.blocks;
         }
 
-        let same_chat = self.transcript_chat_id == chat_id;
         let old_markdown = std::mem::replace(&mut self.transcript_markdown, snapshot.markdown);
         self.transcript_chat_id = chat_id;
 
