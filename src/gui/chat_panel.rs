@@ -85,7 +85,7 @@ impl ChatPanel {
                     window,
                     cx,
                 ),
-                ChatHistoryEvent::ForkUserMessage { turn_id } => {
+                ChatHistoryEvent::ForkTurn { turn_id } => {
                     view.fork_chat_through(turn_id.clone(), cx)
                 }
                 ChatHistoryEvent::ResolveApproval {

@@ -72,6 +72,11 @@ pub(super) enum HistoryBlock {
         key: String,
         label: &'static str,
     },
+    AssistantActions {
+        key: String,
+        turn_id: String,
+        body: SharedString,
+    },
     Notice {
         key: String,
         body: SharedString,
@@ -122,6 +127,7 @@ impl HistoryBlock {
         match self {
             Self::User { key, .. } => BlockId::new("user", key),
             Self::AssistantHeader { key, .. } => BlockId::new("assistant-header", key),
+            Self::AssistantActions { key, .. } => BlockId::new("assistant-actions", key),
             Self::Notice { key, .. } => BlockId::new("notice", key),
             Self::Activity { key, .. } => BlockId::new("activity", key),
             Self::Plan { key, .. } => BlockId::new("plan", key),
@@ -156,7 +162,6 @@ pub(super) fn render(
             let edit_history = history.clone();
             let edit_turn_id = turn_id.clone();
             let edit_body = body.clone();
-            let fork_history = history.clone();
             let animation = history
                 .read_with(cx, |history, _| history.send_animation_launch(&key))
                 .unwrap_or(None);
@@ -185,18 +190,18 @@ pub(super) fn render(
                         history.edit_user_message(turn_id, previous_turn_id, body, cx)
                     });
                 },
-                move |_, _, cx| {
-                    cx.stop_propagation();
-                    let Some(turn_id) = turn_id.clone() else {
-                        return;
-                    };
-                    let _ = fork_history
-                        .update(cx, |history, cx| history.fork_user_message(turn_id, cx));
-                },
             )
         }
         HistoryBlock::AssistantHeader { label, .. } => {
             messages::render_assistant_header(label, cx.theme()).into_any_element()
+        }
+        HistoryBlock::AssistantActions { key, turn_id, body } => {
+            let fork_history = history.clone();
+            messages::render_assistant_actions(&key, body, move |_, _, cx| {
+                cx.stop_propagation();
+                let turn_id = turn_id.clone();
+                let _ = fork_history.update(cx, |history, cx| history.fork_turn(turn_id, cx));
+            })
         }
         HistoryBlock::Notice { key, body } => {
             let dismiss_history = history.clone();

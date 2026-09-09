@@ -49,7 +49,7 @@ pub(crate) enum ChatHistoryEvent {
         previous_turn_id: Option<String>,
         body: String,
     },
-    ForkUserMessage {
+    ForkTurn {
         turn_id: String,
     },
     ResolveApproval {
@@ -225,8 +225,8 @@ impl ChatHistory {
         });
     }
 
-    pub(super) fn fork_user_message(&mut self, turn_id: String, cx: &mut Context<Self>) {
-        cx.emit(ChatHistoryEvent::ForkUserMessage { turn_id });
+    pub(super) fn fork_turn(&mut self, turn_id: String, cx: &mut Context<Self>) {
+        cx.emit(ChatHistoryEvent::ForkTurn { turn_id });
     }
 
     pub(super) fn resolve_approval(

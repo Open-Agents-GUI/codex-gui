@@ -339,19 +339,21 @@ impl CodexGui {
                 );
             }
             ServerNotification::McpServerStatusUpdated(params) => {
-                if params.error.is_some() || params.failure_reason.is_some() {
-                    self.apply_targeted_notice(
-                        params.thread_id.as_deref(),
-                        &format!("mcp-status-{}", params.name),
-                        format!(
-                            "MCP server {}: {:?}. {}",
-                            params.name,
-                            params.status,
-                            params.error.unwrap_or_default()
-                        ),
-                        cx,
-                    );
-                }
+                // We don't want to display MCP startup failures
+
+                // if params.error.is_some() || params.failure_reason.is_some() {
+                //     self.apply_targeted_notice(
+                //         params.thread_id.as_deref(),
+                //         &format!("mcp-status-{}", params.name),
+                //         format!(
+                //             "MCP server {}: {:?}. {}",
+                //             params.name,
+                //             params.status,
+                //             params.error.unwrap_or_default()
+                //         ),
+                //         cx,
+                //     );
+                // }
             }
             ServerNotification::WindowsWorldWritableWarning(params) => {
                 let mut body = format!(

@@ -182,6 +182,7 @@ fn append_turn(
             transcript,
             chat,
             chat_source,
+            &turn.id,
             final_answer,
             &[],
             false,
@@ -234,6 +235,7 @@ fn append_items(
                     transcript,
                     chat,
                     chat_source,
+                    turn_id,
                     &items[index],
                     &tools,
                     tool_group_is_tail(items, index + 1, tools_end),
@@ -390,6 +392,7 @@ fn append_agent(
     transcript: &mut TranscriptSnapshot,
     chat: &ChatState,
     chat_source: &WeakEntity<ChatState>,
+    turn_id: &str,
     item: &ThreadItem,
     tools: &[&ThreadItem],
     tail: bool,
@@ -418,6 +421,14 @@ fn append_agent(
         );
     }
     transcript.push_markdown(text);
+
+    if is_final_answer(phase.as_ref()) && !chat.item_is_streaming(id) && !text.trim().is_empty() {
+        transcript.push_block(HistoryBlock::AssistantActions {
+            key: id.clone(),
+            turn_id: turn_id.to_string(),
+            body: text.clone().into(),
+        });
+    }
 
     if !tools.is_empty() {
         append_tool_group(

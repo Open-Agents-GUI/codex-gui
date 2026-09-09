@@ -3,7 +3,7 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 use gpui_component::{
-    Sizable as _,
+    IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     spinner::Spinner,
     theme::Theme,
@@ -33,7 +33,6 @@ pub(super) fn render_user(
     theme: &Theme,
     on_animation_complete: impl FnOnce(&mut App) + 'static,
     on_edit: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    on_fork: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let copy_body = body.clone();
     let animation_target = animation.as_ref().map(|_| UserMessageTarget::default());
@@ -95,7 +94,7 @@ pub(super) fn render_user(
                                     Button::new(format!("copy-user-message-{key}"))
                                         .xsmall()
                                         .ghost()
-                                        .label("Copy")
+                                        .icon(IconName::Copy)
                                         .tooltip("Copy message")
                                         .on_click(move |_, _, cx| {
                                             cx.stop_propagation();
@@ -108,17 +107,9 @@ pub(super) fn render_user(
                                     Button::new(format!("edit-user-message-{key}"))
                                         .xsmall()
                                         .ghost()
-                                        .label("Edit")
+                                        .icon(IconName::Replace)
                                         .tooltip("Edit message in a fork")
                                         .on_click(on_edit),
-                                )
-                                .child(
-                                    Button::new(format!("fork-user-message-{key}"))
-                                        .xsmall()
-                                        .ghost()
-                                        .label("Fork")
-                                        .tooltip("Fork chat from this message")
-                                        .on_click(on_fork),
                                 )
                         }),
                 ),
@@ -137,6 +128,40 @@ pub(super) fn render_user(
     } else {
         row.into_any_element()
     }
+}
+
+pub(super) fn render_assistant_actions(
+    key: &str,
+    body: SharedString,
+    on_fork: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    let copy_body = body.clone();
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_1()
+        .pt_1()
+        .child(
+            Button::new(format!("copy-assistant-message-{key}"))
+                .xsmall()
+                .ghost()
+                .icon(IconName::Copy)
+                .tooltip("Copy response")
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_body.to_string()));
+                }),
+        )
+        .child(
+            Button::new(format!("fork-assistant-message-{key}"))
+                .xsmall()
+                .ghost()
+                .icon(IconName::Network)
+                .tooltip("Fork chat from this response")
+                .on_click(on_fork),
+        )
+        .into_any_element()
 }
 
 fn render_user_bubble(body: SharedString, theme: &Theme) -> gpui::Div {
