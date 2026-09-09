@@ -475,7 +475,7 @@ impl ChatPanel {
 
         div()
             .w_full()
-            .max_w(px(820.))
+            .max_w(px(1000.))
             .rounded_3xl()
             .border_1()
             .border_color(cx.theme().border)
@@ -929,7 +929,7 @@ impl Render for ChatPanel {
                     .child(
                         div()
                             .w_full()
-                            .max_w(px(820.))
+                            .max_w(px(1000.))
                             .mx_auto()
                             .flex()
                             .items_center()

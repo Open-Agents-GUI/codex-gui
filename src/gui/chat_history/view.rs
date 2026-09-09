@@ -447,9 +447,10 @@ impl Render for ChatHistory {
                     .selectable(true)
                     .scrollable(true)
                     .scroll_bottom_padding(gpui::relative(0.3))
-                    .content_max_width(px(1500.))
+                    .content_max_width(px(1000.))
                     .size_full()
                     .min_w_0()
+                    .px_5()
                     .text_base()
                     .line_height(px(30.))
                     .style(TextViewStyle {
