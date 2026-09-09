@@ -13,6 +13,8 @@ impl CodexGui {
             let _ = this.update(cx, |view, cx| {
                 view.apply_models_result(models_result, settings_result, cx)
             });
+            let result = bridge.list_threads().await;
+            let _ = this.update(cx, |view, cx| view.apply_threads_result(result, cx));
         })
         .detach();
 
@@ -23,13 +25,6 @@ impl CodexGui {
             let _ = this.update(cx, |view, cx| {
                 view.apply_permission_profiles_result(result, cx)
             });
-        })
-        .detach();
-
-        let bridge = self.bridge.clone();
-        cx.spawn(async move |this, cx| {
-            let result = bridge.list_threads().await;
-            let _ = this.update(cx, |view, cx| view.apply_threads_result(result, cx));
         })
         .detach();
     }

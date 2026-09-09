@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use codex_app_server_protocol::{
-    CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse,
+    ApprovalsReviewer, CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse,
     FileChangeApprovalDecision, FileChangeRequestApprovalResponse, FileUpdateChange,
     GrantedPermissionProfile, McpServerElicitationAction, McpServerElicitationRequestResponse,
-    ApprovalsReviewer, PermissionGrantScope, PermissionsRequestApprovalResponse, RequestId, Thread, ThreadItem,
+    PermissionGrantScope, PermissionsRequestApprovalResponse, RequestId, Thread, ThreadItem,
     ThreadStatus, ToolRequestUserInputAnswer, ToolRequestUserInputQuestion,
     ToolRequestUserInputResponse, Turn, TurnPlanStep, TurnStatus, UserInput,
 };
@@ -24,7 +24,7 @@ pub(crate) fn single_line_title(title: &str) -> String {
         .join(" ")
 }
 
-pub struct GuiState {
+pub struct WorkspaceState {
     pub projects: Vec<Entity<ProjectState>>,
     pub projectless_chats: Vec<Entity<ChatState>>,
     pub active_project: usize,
@@ -32,12 +32,13 @@ pub struct GuiState {
     pub active_projectless_chat: Option<usize>,
     /// Whether the app server has answered the initial thread listing.
     pub threads_loaded: bool,
-    pub chat_settings: ChatSettings,
+    /// Defaults used by the new-chat composer. Existing chats own their settings.
+    pub new_chat_settings: ChatSettings,
     pub available_models: Vec<ModelOption>,
     pub permission_profiles: Vec<PermissionProfileOption>,
 }
 
-impl GuiState {
+impl WorkspaceState {
     pub fn new() -> Self {
         Self {
             projects: Vec::new(),
@@ -46,7 +47,7 @@ impl GuiState {
             active_chat: 0,
             active_projectless_chat: None,
             threads_loaded: false,
-            chat_settings: ChatSettings::default(),
+            new_chat_settings: ChatSettings::default(),
             available_models: Vec::new(),
             permission_profiles: default_permission_profiles(),
         }
@@ -133,6 +134,38 @@ impl GuiState {
         self.active_chat = 0;
     }
 
+    pub fn select_chat_entity(
+        &mut self,
+        selected: &Entity<ChatState>,
+        cx: &impl AppContext,
+    ) -> bool {
+        if let Some(index) = self
+            .projectless_chats
+            .iter()
+            .position(|chat| chat == selected)
+        {
+            self.select_projectless_chat(index);
+            return true;
+        }
+        if let Some((project_index, chat_index)) =
+            self.projects
+                .iter()
+                .enumerate()
+                .find_map(|(project_index, project)| {
+                    project
+                        .read_with(cx, |project, _| {
+                            project.chats.iter().position(|chat| chat == selected)
+                        })
+                        .map(|chat_index| (project_index, chat_index))
+                })
+        {
+            self.active_project = project_index;
+            self.select_chat(chat_index);
+            return true;
+        }
+        false
+    }
+
     pub fn add_project(&mut self, project: Entity<ProjectState>) -> usize {
         self.projects.push(project);
         self.active_project = self.projects.len() - 1;
@@ -146,35 +179,35 @@ impl GuiState {
     }
 
     pub fn set_model(&mut self, model: String) {
-        self.chat_settings.model = model;
+        self.new_chat_settings.model = model;
         if let Some(option) = self
             .available_models
             .iter()
-            .find(|option| option.id == self.chat_settings.model)
+            .find(|option| option.id == self.new_chat_settings.model)
         {
-            self.chat_settings.effort = option.default_effort.clone();
+            self.new_chat_settings.effort = option.default_effort.clone();
         }
     }
 
     pub fn set_effort(&mut self, effort: String) {
-        self.chat_settings.effort = effort;
+        self.new_chat_settings.effort = effort;
     }
 
     pub fn set_permission_profile(&mut self, permission_profile: String) {
-        self.chat_settings.permission_profile = permission_profile;
+        self.new_chat_settings.permission_profile = permission_profile;
     }
 
     pub fn set_approvals_reviewer(&mut self, approvals_reviewer: ApprovalsReviewer) {
-        self.chat_settings.approvals_reviewer = approvals_reviewer;
+        self.new_chat_settings.approvals_reviewer = approvals_reviewer;
     }
 
     pub fn set_available_models(&mut self, models: Vec<ModelOption>) {
         if let Some(default_model) = models
             .first()
-            .filter(|_| self.chat_settings.model.is_empty())
+            .filter(|_| self.new_chat_settings.model.is_empty())
         {
-            self.chat_settings.model = default_model.id.clone();
-            self.chat_settings.effort = default_model.default_effort.clone();
+            self.new_chat_settings.model = default_model.id.clone();
+            self.new_chat_settings.effort = default_model.default_effort.clone();
         }
         self.available_models = models;
     }
@@ -344,6 +377,12 @@ pub struct ChatState {
     pub pending_inputs: Vec<PendingUserInputRequest>,
     pub turn_plans: HashMap<String, TurnPlanView>,
     pub tool_progress: HashMap<String, Vec<SharedString>>,
+    pub settings: ChatSettings,
+    pub draft: String,
+    pub editing_message: Option<EditingMessage>,
+    pub active_turn: Option<ActiveTurn>,
+    pub is_loading: bool,
+    pub is_creating: bool,
     pending_user_message: Option<PendingUserMessage>,
     message_states: HashMap<String, MessageState>,
     item_locations: HashMap<String, ThreadItemLocation>,
@@ -385,6 +424,12 @@ impl ChatState {
             pending_inputs: Vec::new(),
             turn_plans: HashMap::new(),
             tool_progress: HashMap::new(),
+            settings: ChatSettings::default(),
+            draft: String::new(),
+            editing_message: None,
+            active_turn: None,
+            is_loading: false,
+            is_creating: false,
             pending_user_message: None,
             message_states: HashMap::new(),
             item_locations: HashMap::new(),
@@ -394,9 +439,22 @@ impl ChatState {
         }
     }
 
-    pub fn from_thread(thread: Thread, title: SharedString, subtitle: SharedString) -> Self {
+    pub fn from_thread(
+        thread: Thread,
+        title: SharedString,
+        subtitle: SharedString,
+        settings: ChatSettings,
+    ) -> Self {
         let id = thread.id.clone();
         let item_locations = thread_item_locations(&thread);
+        let active_turn = thread
+            .turns
+            .iter()
+            .rev()
+            .find(|turn| matches!(turn.status, TurnStatus::InProgress))
+            .map(|turn| ActiveTurn {
+                turn_id: turn.id.clone(),
+            });
         Self {
             id,
             title,
@@ -407,6 +465,12 @@ impl ChatState {
             pending_inputs: Vec::new(),
             turn_plans: HashMap::new(),
             tool_progress: HashMap::new(),
+            settings,
+            draft: String::new(),
+            editing_message: None,
+            active_turn,
+            is_loading: false,
+            is_creating: false,
             pending_user_message: None,
             message_states: HashMap::new(),
             item_locations,
@@ -610,14 +674,56 @@ impl ChatState {
         }
     }
 
-    pub fn adopt_thread(&mut self, thread: Thread, title: SharedString, subtitle: SharedString) {
+    pub fn adopt_thread(
+        &mut self,
+        mut thread: Thread,
+        title: SharedString,
+        subtitle: SharedString,
+    ) {
+        if thread.turns.is_empty()
+            && let Some(existing) = self.thread.as_ref()
+            && !existing.turns.is_empty()
+        {
+            thread.turns = existing.turns.clone();
+        }
+        let resumed_active_turn = thread
+            .turns
+            .iter()
+            .rev()
+            .find(|turn| matches!(turn.status, TurnStatus::InProgress))
+            .map(|turn| ActiveTurn {
+                turn_id: turn.id.clone(),
+            });
         self.id = thread.id.clone();
         self.title = title;
         self.subtitle = subtitle;
         self.thread = Some(thread);
+        if resumed_active_turn.is_some() || self.active_turn.is_none() {
+            self.active_turn = resumed_active_turn;
+        }
+        self.is_creating = false;
+        self.is_loading = false;
         self.rebuild_item_locations();
         self.reconcile_pending_user_message();
         self.mark_all_transcript_layout();
+    }
+
+    pub fn start_turn(&mut self, turn_id: String) {
+        self.active_turn = Some(ActiveTurn { turn_id });
+    }
+
+    pub fn finish_turn(&mut self, turn_id: Option<&str>) {
+        if self
+            .active_turn
+            .as_ref()
+            .is_some_and(|active| turn_id.is_none_or(|turn_id| active.turn_id == turn_id))
+        {
+            self.active_turn = None;
+        }
+    }
+
+    pub fn active_turn_id(&self) -> Option<&str> {
+        self.active_turn.as_ref().map(|turn| turn.turn_id.as_str())
     }
 
     pub fn begin_user_message(&mut self, client_id: String, text: String) -> bool {
@@ -1115,22 +1221,20 @@ fn apply_turn_completion(existing: &mut Turn, completed: Turn) {
     existing.duration_ms = completed.duration_ms;
 }
 
-pub struct UiState {
+pub struct WindowState {
     pub side_chat_open: bool,
     pub new_chat_open: bool,
     pub new_chat_projectless: bool,
-    pub active_turn: Option<ActiveTurn>,
-    pub loading_thread_id: Option<String>,
+    pub new_chat_draft: String,
 }
 
-impl UiState {
+impl WindowState {
     pub fn new() -> Self {
         Self {
             side_chat_open: false,
             new_chat_open: true,
             new_chat_projectless: false,
-            active_turn: None,
-            loading_thread_id: None,
+            new_chat_draft: String::new(),
         }
     }
 
@@ -1154,38 +1258,17 @@ impl UiState {
     pub fn toggle_side_chat(&mut self) {
         self.side_chat_open = !self.side_chat_open;
     }
-
-    pub fn start_turn(&mut self, thread_id: String, turn_id: String) {
-        self.active_turn = Some(ActiveTurn { thread_id, turn_id });
-    }
-
-    pub fn finish_turn(&mut self, thread_id: &str, turn_id: &str) {
-        if self.active_turn.as_ref().is_some_and(|active_turn| {
-            active_turn.thread_id == thread_id && active_turn.turn_id == turn_id
-        }) {
-            self.active_turn = None;
-        }
-    }
-
-    pub fn clear_active_turn(&mut self) {
-        self.active_turn = None;
-    }
-
-    pub fn begin_thread_load(&mut self, thread_id: String) {
-        self.loading_thread_id = Some(thread_id);
-    }
-
-    pub fn finish_thread_load(&mut self, thread_id: &str) {
-        if self.loading_thread_id.as_deref() == Some(thread_id) {
-            self.loading_thread_id = None;
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActiveTurn {
-    pub thread_id: String,
     pub turn_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditingMessage {
+    pub turn_id: String,
+    pub previous_turn_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -1259,6 +1342,48 @@ mod tests {
 
         assert!(!chat.user_message_is_sending());
         assert!(chat.begin_user_message("client-2".into(), "retry".into()));
+    }
+
+    #[test]
+    fn turn_runtime_is_isolated_per_chat() {
+        let mut first =
+            ChatState::new("thread-1".into(), "First".into(), "idle".into(), Vec::new());
+        let mut second = ChatState::new(
+            "thread-2".into(),
+            "Second".into(),
+            "idle".into(),
+            Vec::new(),
+        );
+
+        first.start_turn("turn-1".into());
+        second.start_turn("turn-2".into());
+        first.finish_turn(Some("turn-1"));
+
+        assert!(first.active_turn.is_none());
+        assert_eq!(second.active_turn_id(), Some("turn-2"));
+    }
+
+    #[test]
+    fn composer_and_settings_are_isolated_per_chat() {
+        let mut first =
+            ChatState::new("thread-1".into(), "First".into(), "idle".into(), Vec::new());
+        let second = ChatState::new(
+            "thread-2".into(),
+            "Second".into(),
+            "idle".into(),
+            Vec::new(),
+        );
+
+        first.draft = "draft for first".into();
+        first.settings.model = "different-model".into();
+        first.editing_message = Some(EditingMessage {
+            turn_id: "turn-1".into(),
+            previous_turn_id: None,
+        });
+
+        assert!(second.draft.is_empty());
+        assert_ne!(first.settings.model, second.settings.model);
+        assert!(second.editing_message.is_none());
     }
 
     #[test]

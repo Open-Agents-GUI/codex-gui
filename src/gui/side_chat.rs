@@ -1,16 +1,16 @@
-use crate::gui::{GuiState, widgets::render_notice};
+use crate::gui::{WorkspaceState, widgets::render_notice};
 use gpui::{
     Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window, div, px,
 };
 use gpui_component::ActiveTheme as _;
 
 pub struct SideChat {
-    state: Entity<GuiState>,
+    state: Entity<WorkspaceState>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl SideChat {
-    pub fn new(state: Entity<GuiState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<WorkspaceState>, cx: &mut Context<Self>) -> Self {
         let subscriptions = vec![cx.observe(&state, |_, _, cx| cx.notify())];
         Self {
             state,

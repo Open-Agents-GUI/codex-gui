@@ -1,6 +1,5 @@
 use crate::gui::{
-    ChatSettings, ModelOption, PermissionMode, PermissionProfileOption,
-    permission_profile_label,
+    ChatSettings, ModelOption, PermissionMode, PermissionProfileOption, permission_profile_label,
 };
 use codex_app_server_client::{
     DEFAULT_IN_PROCESS_CHANNEL_CAPACITY, EnvironmentManager, ExecServerRuntimePaths,
@@ -26,7 +25,7 @@ use std::{
     fmt,
     sync::{
         Arc,
-        atomic::{AtomicI64, AtomicUsize, Ordering},
+        atomic::{AtomicI64, Ordering},
     },
 };
 use tokio::{
@@ -43,7 +42,6 @@ struct BridgeInner {
     client_state: watch::Receiver<ClientState>,
     shutdown_tx: watch::Sender<bool>,
     next_request_id: AtomicI64,
-    muted_thread_notifications: Arc<AtomicUsize>,
     server_response_tx: mpsc::UnboundedSender<ServerResponseCommand>,
 }
 
@@ -58,17 +56,6 @@ enum ServerResponseCommand {
         error: JSONRPCErrorError,
         response_tx: oneshot::Sender<Result<(), String>>,
     },
-}
-
-pub struct ThreadNotificationMute {
-    muted_thread_notifications: Arc<AtomicUsize>,
-}
-
-impl Drop for ThreadNotificationMute {
-    fn drop(&mut self) {
-        self.muted_thread_notifications
-            .fetch_sub(1, Ordering::Relaxed);
-    }
 }
 
 impl Drop for BridgeInner {
@@ -128,15 +115,12 @@ pub fn start_app_server_bridge(
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (server_response_tx, server_response_rx) = mpsc::unbounded_channel();
-    let muted_thread_notifications = Arc::new(AtomicUsize::new(0));
-
     runtime.spawn(run_embedded_app_server(
         arg0_paths,
         client_state_tx,
         shutdown_rx,
         event_tx,
         server_response_rx,
-        muted_thread_notifications.clone(),
     ));
 
     (
@@ -145,7 +129,6 @@ pub fn start_app_server_bridge(
                 client_state: client_state_rx,
                 shutdown_tx,
                 next_request_id: AtomicI64::new(1),
-                muted_thread_notifications,
                 server_response_tx,
             }),
         },
@@ -154,15 +137,6 @@ pub fn start_app_server_bridge(
 }
 
 impl AppServerBridge {
-    pub fn mute_thread_notifications(&self) -> ThreadNotificationMute {
-        self.inner
-            .muted_thread_notifications
-            .fetch_add(1, Ordering::Relaxed);
-        ThreadNotificationMute {
-            muted_thread_notifications: self.inner.muted_thread_notifications.clone(),
-        }
-    }
-
     pub async fn wait_until_ready(&self) -> BridgeResult<()> {
         self.request_handle().await.map(|_| ())
     }
@@ -570,7 +544,6 @@ async fn run_embedded_app_server(
     mut shutdown: watch::Receiver<bool>,
     events: mpsc::UnboundedSender<BridgeEvent>,
     mut server_responses: mpsc::UnboundedReceiver<ServerResponseCommand>,
-    muted_thread_notifications: Arc<AtomicUsize>,
 ) {
     let mut client = match build_embedded_client(arg0_paths).await {
         Ok(client) => client,
@@ -620,16 +593,7 @@ async fn run_embedded_app_server(
                 };
                 match event {
                     InProcessServerEvent::ServerNotification(notification) => {
-                        let notification = *notification;
-                        let muted = muted_thread_notifications.load(Ordering::Relaxed) > 0
-                            && matches!(
-                                &notification,
-                                ServerNotification::ThreadStarted(_)
-                                    | ServerNotification::ThreadDeleted(_)
-                            );
-                        if !muted {
-                            let _ = events.send(BridgeEvent::Notification(notification));
-                        }
+                        let _ = events.send(BridgeEvent::Notification(*notification));
                     }
                     InProcessServerEvent::ServerRequest(request) => {
                         let _ = events.send(BridgeEvent::ServerRequest(*request));
@@ -724,4 +688,3 @@ fn reasoning_effort_for(settings: &ChatSettings) -> ReasoningEffort {
         .parse()
         .unwrap_or_else(|_| ReasoningEffort::Medium)
 }
-

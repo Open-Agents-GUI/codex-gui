@@ -1,5 +1,5 @@
 use crate::app::CodexGui;
-use crate::gui::{GuiState, ProjectState};
+use crate::gui::{ProjectState, WorkspaceState};
 use gpui::{Entity, ListState, Subscription, WeakEntity, px};
 use std::collections::{HashMap, HashSet};
 
@@ -23,7 +23,7 @@ const PAGE_SIZE: usize = 10;
 
 pub struct Sidebar {
     parent: WeakEntity<CodexGui>,
-    state: Entity<GuiState>,
+    state: Entity<WorkspaceState>,
     should_move_window: bool,
     collapsed_projects: HashSet<String>,
     visible_project_count: usize,

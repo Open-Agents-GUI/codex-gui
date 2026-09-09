@@ -1,4 +1,4 @@
-use super::{CodexGui, thread_mapping::*};
+use super::{CodexGui, PendingAgentMessageDeltaLog, thread_mapping::*};
 use crate::bridge::BridgeEvent;
 use crate::global_state::CodexGlobalState;
 use crate::gui::{ChatState, HistoryNotice, ProjectState};
@@ -28,7 +28,15 @@ impl CodexGui {
         notification: ServerNotification,
         cx: &mut Context<Self>,
     ) {
-        debug!("{:?}", notification);
+        match &notification {
+            ServerNotification::AgentMessageDelta(params) => {
+                self.accumulate_agent_message_delta_log(&params.delta);
+            }
+            _ => {
+                self.flush_agent_message_delta_log();
+                debug!("{:?}", notification);
+            }
+        }
         match notification {
             ServerNotification::ThreadStarted(params) => {
                 self.apply_thread_started(params.thread, cx);
@@ -48,9 +56,8 @@ impl CodexGui {
                     "turn running"
                 );
                 self.upsert_thread_turn(&params.thread_id, params.turn.clone(), cx);
-                self.ui_state.update(cx, |state, cx| {
-                    state.start_turn(params.thread_id, params.turn.id);
-                    cx.notify();
+                self.update_chat(&params.thread_id, cx, |chat| {
+                    chat.start_turn(params.turn.id)
                 });
             }
             ServerNotification::ItemStarted(params) => {
@@ -151,10 +158,7 @@ impl CodexGui {
                 let turn_id = turn.id.clone();
                 let turn_error = turn.error.as_ref().map(|error| error.message.clone());
                 self.complete_thread_turn(&thread_id, turn, cx);
-                self.ui_state.update(cx, |state, cx| {
-                    state.finish_turn(&thread_id, &turn_id);
-                    cx.notify();
-                });
+                self.update_chat(&thread_id, cx, |chat| chat.finish_turn(Some(&turn_id)));
                 tracing::info!(thread_id, turn_id, "turn complete");
                 if let Some(error) = turn_error {
                     self.apply_thread_error(&thread_id, &turn_id, error, false, cx);
@@ -177,7 +181,7 @@ impl CodexGui {
                     cx,
                 );
             }
-            ServerNotification::GuardianWarning(params) => {
+            ServerNotification::GuardianWarning(_params) => {
                 // Normally it's auto approve success
                 // We don't want to display this
 
@@ -338,7 +342,7 @@ impl CodexGui {
                     cx,
                 );
             }
-            ServerNotification::McpServerStatusUpdated(params) => {
+            ServerNotification::McpServerStatusUpdated(_params) => {
                 // We don't want to display MCP startup failures
 
                 // if params.error.is_some() || params.failure_reason.is_some() {
@@ -409,6 +413,31 @@ impl CodexGui {
         }
     }
 
+    fn accumulate_agent_message_delta_log(&mut self, delta: &str) {
+        if let Some(pending) = self.pending_agent_message_delta_log.as_mut() {
+            pending.delta.push_str(delta);
+            pending.count += 1;
+            return;
+        }
+
+        self.pending_agent_message_delta_log = Some(PendingAgentMessageDeltaLog {
+            delta: delta.to_owned(),
+            count: 1,
+        });
+    }
+
+    fn flush_agent_message_delta_log(&mut self) {
+        let Some(pending) = self.pending_agent_message_delta_log.take() else {
+            return;
+        };
+
+        debug!(
+            delta_count = pending.count,
+            delta = ?pending.delta,
+            "AgentMessageDelta"
+        );
+    }
+
     pub(super) fn update_chat(
         &self,
         thread_id: &str,
@@ -468,16 +497,7 @@ impl CodexGui {
     }
 
     fn finish_thread_turn(&self, thread_id: &str, turn_id: Option<&str>, cx: &mut Context<Self>) {
-        self.ui_state.update(cx, |state, cx| {
-            let matches = state.active_turn.as_ref().is_some_and(|active| {
-                active.thread_id == thread_id
-                    && turn_id.is_none_or(|turn_id| active.turn_id == turn_id)
-            });
-            if matches {
-                state.clear_active_turn();
-                cx.notify();
-            }
-        });
+        self.update_chat(thread_id, cx, |chat| chat.finish_turn(turn_id));
     }
 
     pub(super) fn remove_pending_approval(
@@ -502,17 +522,16 @@ impl CodexGui {
         let thread_id = thread.id.clone();
         let updated_at = thread.updated_at;
         let cwd = thread.cwd.to_string_lossy().into_owned();
-        let pending = self.pending_thread.take();
         let known_projectless = CodexGlobalState::load()
             .map(|state| state.projectless_thread_ids().contains(&thread_id))
             .unwrap_or_else(|error| {
                 tracing::warn!(%error, "failed to classify started thread from global state");
                 false
             });
-        let projectless =
-            known_projectless || pending.as_ref().is_some_and(|pending| pending.projectless);
-        let pending_chat = pending.as_ref().map(|pending| pending.chat.clone());
-        let chat = if let Some(chat) = pending_chat.as_ref() {
+        let settings = self.state.read(cx).new_chat_settings.clone();
+        let selected_chat = self.active_chat_entity(cx);
+        let existing = self.find_chat_entity(&thread_id, cx);
+        let chat = if let Some(chat) = existing {
             let title = thread_title(thread.name.as_deref(), &thread.preview);
             let subtitle = format!(
                 "{} - {}",
@@ -525,10 +544,17 @@ impl CodexGui {
             });
             chat.clone()
         } else {
-            chat_entity_from_thread(thread, cx)
+            chat_entity_from_thread(thread, settings, cx)
         };
 
-        if projectless {
+        if known_projectless {
+            let projects = self.state.read(cx).projects.clone();
+            for project in projects {
+                project.update(cx, |project, cx| {
+                    project.chats.retain(|candidate| candidate != &chat);
+                    cx.notify();
+                });
+            }
             if let Err(error) = CodexGlobalState::add_projectless_thread(&thread_id) {
                 chat.update(cx, |chat, cx| {
                     chat.upsert_notice(
@@ -539,46 +565,122 @@ impl CodexGui {
                 });
             }
             self.state.update(cx, |state, cx| {
-                let index = state
+                if !state
                     .projectless_chats
                     .iter()
-                    .position(|candidate| candidate.read(cx).id == thread_id)
-                    .unwrap_or_else(|| {
-                        state.projectless_chats.insert(0, chat.clone());
-                        0
-                    });
-                state.select_projectless_chat(index);
+                    .any(|candidate| candidate == &chat)
+                {
+                    state.projectless_chats.insert(0, chat.clone());
+                }
+                if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
                 cx.notify();
             });
         } else {
-            let mut selected_chat_index = 0;
             if let Some(project) = self.ensure_project_for_cwd(&cwd, cx) {
-                selected_chat_index = project.update(cx, |project, cx| {
+                project.update(cx, |project, cx| {
                     project.mark_thread_updated_at(updated_at);
-                    let selected_chat_index = project
-                        .chat_index_by_id(&thread_id, cx)
-                        .unwrap_or_else(|| project.upsert_chat(chat, &thread_id, cx));
+                    if !project.chats.iter().any(|candidate| candidate == &chat) {
+                        project.upsert_chat(chat, &thread_id, cx);
+                    }
                     cx.notify();
-                    selected_chat_index
                 });
             }
             self.state.update(cx, |state, cx| {
                 state.sort_projects_by_recent_activity(cx);
-                state.select_chat(selected_chat_index);
+                if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
                 cx.notify();
             });
         }
-        self.ui_state.update(cx, |state, cx| {
-            state.close_new_chat();
+        tracing::info!(thread_id, "thread ready");
+    }
+
+    pub(super) fn apply_pending_thread_started(
+        &mut self,
+        pending_chat: &Entity<ChatState>,
+        project: Option<&Entity<ProjectState>>,
+        projectless: bool,
+        thread: Thread,
+        cx: &mut Context<Self>,
+    ) {
+        let thread_id = thread.id.clone();
+        let updated_at = thread.updated_at;
+        let selected_chat = self.active_chat_entity(cx);
+        let title = thread_title(thread.name.as_deref(), &thread.preview);
+        let subtitle = format!(
+            "{} - {}",
+            thread_status_label(&thread.status),
+            thread.cwd.display()
+        );
+        pending_chat.update(cx, |chat, cx| {
+            chat.adopt_thread(thread, title.into(), subtitle.into());
             cx.notify();
         });
-        tracing::info!(thread_id, "thread ready");
-        if let Some((client_user_message_id, text)) = pending_chat
-            .as_ref()
-            .and_then(|chat| chat.read(cx).pending_user_message_request())
+
+        let projects = self.state.read(cx).projects.clone();
+        for candidate_project in projects {
+            candidate_project.update(cx, |state, cx| {
+                state
+                    .chats
+                    .retain(|chat| chat == pending_chat || chat.read(cx).id.as_str() != thread_id);
+                cx.notify();
+            });
+        }
+        self.state.update(cx, |state, cx| {
+            state
+                .projectless_chats
+                .retain(|chat| chat == pending_chat || chat.read(cx).id.as_str() != thread_id);
+            cx.notify();
+        });
+
+        if projectless {
+            if let Err(error) = CodexGlobalState::add_projectless_thread(&thread_id) {
+                pending_chat.update(cx, |chat, cx| {
+                    chat.upsert_notice(
+                        "global-state-write-error".into(),
+                        format!("Failed to persist this project-less chat: {error}"),
+                    );
+                    cx.notify();
+                });
+            }
+            self.state.update(cx, |state, cx| {
+                if !state
+                    .projectless_chats
+                    .iter()
+                    .any(|chat| chat == pending_chat)
+                {
+                    state.projectless_chats.insert(0, pending_chat.clone());
+                }
+                if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
+                cx.notify();
+            });
+        } else if let Some(project) = project {
+            project.update(cx, |state, cx| {
+                if !state.chats.iter().any(|chat| chat == pending_chat) {
+                    state.chats.insert(0, pending_chat.clone());
+                }
+                state.mark_thread_updated_at(updated_at);
+                cx.notify();
+            });
+            self.state.update(cx, |state, cx| {
+                state.sort_projects_by_recent_activity(cx);
+                if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
+                cx.notify();
+            });
+        }
+
+        tracing::info!(thread_id, "pending thread ready");
+        if let Some((client_user_message_id, text)) =
+            pending_chat.read(cx).pending_user_message_request()
         {
-            let settings = self.state.read(cx).chat_settings.clone();
-            tracing::info!(thread_id, "starting first turn");
+            let settings = pending_chat.read(cx).settings.clone();
             let bridge = self.bridge.clone();
             cx.spawn(async move |this, cx| {
                 let result = bridge
@@ -594,6 +696,7 @@ impl CodexGui {
                     view.apply_user_submission_result(
                         &thread_id,
                         &client_user_message_id,
+                        true,
                         result,
                         cx,
                     )
@@ -603,26 +706,115 @@ impl CodexGui {
         }
     }
 
+    pub(super) fn apply_forked_thread(
+        &mut self,
+        source_chat: &Entity<ChatState>,
+        thread: Thread,
+        cx: &mut Context<Self>,
+    ) {
+        let thread_id = thread.id.clone();
+        let cwd = thread.cwd.to_string_lossy().into_owned();
+        let settings = source_chat.read(cx).settings.clone();
+        let selected_chat = self.active_chat_entity(cx);
+        let should_select = selected_chat.as_ref() == Some(source_chat);
+        let fork_chat = if let Some(existing) = self.find_chat_entity(&thread_id, cx) {
+            let title = thread_title(thread.name.as_deref(), &thread.preview);
+            let subtitle = format!(
+                "{} - {}",
+                thread_status_label(&thread.status),
+                thread.cwd.display()
+            );
+            existing.update(cx, |chat, cx| {
+                chat.settings = settings;
+                chat.adopt_thread(thread, title.into(), subtitle.into());
+                cx.notify();
+            });
+            existing
+        } else {
+            chat_entity_from_thread(thread, settings, cx)
+        };
+        let source_is_projectless = self
+            .state
+            .read(cx)
+            .projectless_chats
+            .iter()
+            .any(|chat| chat == source_chat);
+        if source_is_projectless {
+            let _ = CodexGlobalState::add_projectless_thread(&thread_id);
+            let projects = self.state.read(cx).projects.clone();
+            for project in projects {
+                project.update(cx, |project, cx| {
+                    project.chats.retain(|chat| chat != &fork_chat);
+                    cx.notify();
+                });
+            }
+            self.state.update(cx, |state, cx| {
+                if !state
+                    .projectless_chats
+                    .iter()
+                    .any(|chat| chat == &fork_chat)
+                {
+                    state.projectless_chats.insert(0, fork_chat.clone());
+                }
+                if should_select {
+                    state.select_chat_entity(&fork_chat, cx);
+                } else if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
+                cx.notify();
+            });
+        } else if let Some(project) = self.ensure_project_for_cwd(&cwd, cx) {
+            project.update(cx, |project, cx| {
+                if !project.chats.iter().any(|chat| chat == &fork_chat) {
+                    project.chats.insert(0, fork_chat.clone());
+                }
+                cx.notify();
+            });
+            self.state.update(cx, |state, cx| {
+                if should_select {
+                    state.select_chat_entity(&fork_chat, cx);
+                } else if let Some(selected_chat) = selected_chat.as_ref() {
+                    state.select_chat_entity(selected_chat, cx);
+                }
+                cx.notify();
+            });
+        }
+    }
+
     pub(super) fn replace_thread_in_ui(
         &mut self,
-        source_thread_id: &str,
+        source_chat: &Entity<ChatState>,
         replacement: Thread,
+        settings: crate::gui::ChatSettings,
         cx: &mut Context<Self>,
-    ) -> bool {
+    ) -> Option<Entity<ChatState>> {
+        let source_thread_id = source_chat.read(cx).id.clone();
         let replacement_thread_id = replacement.id.clone();
         let updated_at = replacement.updated_at;
-        let replacement_chat = chat_entity_from_thread(replacement, cx);
+        let replacement_chat = chat_entity_from_thread(replacement, settings, cx);
+        let was_selected = self.active_chat_entity(cx).as_ref() == Some(source_chat);
 
         let projectless_index = self
             .state
             .read(cx)
             .projectless_chats
             .iter()
-            .position(|chat| chat.read(cx).id == source_thread_id);
-        if let Some(index) = projectless_index {
+            .position(|chat| chat == source_chat);
+        if projectless_index.is_some() {
             self.state.update(cx, |state, cx| {
-                state.projectless_chats[index] = replacement_chat;
-                state.select_projectless_chat(index);
+                state
+                    .projectless_chats
+                    .retain(|chat| chat.read(cx).id != replacement_thread_id);
+                if let Some(source_index) = state
+                    .projectless_chats
+                    .iter()
+                    .position(|chat| chat == source_chat)
+                {
+                    state.projectless_chats[source_index] = replacement_chat.clone();
+                    if was_selected {
+                        state.select_projectless_chat(source_index);
+                    }
+                }
                 cx.notify();
             });
         } else {
@@ -632,40 +824,52 @@ impl CodexGui {
                         .read(cx)
                         .chats
                         .iter()
-                        .position(|chat| chat.read(cx).id == source_thread_id)
+                        .position(|chat| chat == source_chat)
                         .map(|chat_index| (project_index, chat_index, project.clone()))
                 },
             );
-            let Some((project_index, chat_index, project)) = location else {
+            let Some((project_index, _chat_index, project)) = location else {
                 tracing::warn!(
                     source_thread_id,
                     replacement_thread_id,
                     "source thread missing while applying edited replacement"
                 );
-                return false;
+                return None;
             };
             project.update(cx, |project, cx| {
-                project.chats[chat_index] = replacement_chat;
+                project
+                    .chats
+                    .retain(|chat| chat.read(cx).id != replacement_thread_id);
+                if let Some(source_index) =
+                    project.chats.iter().position(|chat| chat == source_chat)
+                {
+                    project.chats[source_index] = replacement_chat.clone();
+                }
                 project.mark_thread_updated_at(updated_at);
                 cx.notify();
             });
-            self.state.update(cx, |state, cx| {
-                state.active_project = project_index;
-                state.select_chat(chat_index);
-                cx.notify();
-            });
+            if was_selected {
+                self.state.update(cx, |state, cx| {
+                    state.active_project = project_index;
+                    if let Some(chat_index) = project
+                        .read(cx)
+                        .chats
+                        .iter()
+                        .position(|chat| chat == &replacement_chat)
+                    {
+                        state.select_chat(chat_index);
+                    }
+                    cx.notify();
+                });
+            }
         }
 
-        self.ui_state.update(cx, |state, cx| {
-            state.close_new_chat();
-            cx.notify();
-        });
         tracing::info!(
             source_thread_id,
             thread_id = replacement_thread_id,
             "thread replaced in UI"
         );
-        true
+        Some(replacement_chat)
     }
 
     pub(super) fn remove_thread_from_ui(&mut self, thread_id: &str, cx: &mut Context<Self>) {
@@ -718,53 +922,36 @@ impl CodexGui {
         tracing::info!(thread_id, "removed deleted thread from UI");
     }
 
-    pub(super) fn apply_thread_resumed(&mut self, thread: Thread, cx: &mut Context<Self>) {
+    pub(super) fn apply_thread_resumed(
+        &mut self,
+        target: &Entity<ChatState>,
+        thread: Thread,
+        cx: &mut Context<Self>,
+    ) {
         let thread_id = thread.id.clone();
-        let chat = chat_entity_from_thread(thread, cx);
-        if self
-            .state
-            .read(cx)
-            .projectless_chats
-            .iter()
-            .any(|chat| chat.read(cx).id == thread_id)
-        {
-            self.state.update(cx, |state, cx| {
-                let index = state
-                    .projectless_chats
-                    .iter()
-                    .position(|chat| chat.read(cx).id == thread_id);
-                match index {
-                    Some(index) => state.projectless_chats[index] = chat,
-                    None => state.projectless_chats.insert(0, chat),
-                }
-                cx.notify();
-            });
-        } else if let Some(project) = self.active_project_entity(cx) {
-            let should_keep_selected = self
-                .active_chat_entity(cx)
-                .map(|chat| chat.read(cx).id == thread_id)
-                .unwrap_or(false);
-            let loaded_chat_index = project.update(cx, |project, cx| {
-                let loaded_chat_index = project.upsert_chat(chat, &thread_id, cx);
-                cx.notify();
-                loaded_chat_index
-            });
-            if should_keep_selected {
-                self.state.update(cx, |state, cx| {
-                    state.select_chat(loaded_chat_index);
-                    cx.notify();
-                });
-            }
+        if target.read(cx).id != thread_id {
+            tracing::warn!(
+                expected = target.read(cx).id,
+                thread_id,
+                "resume returned wrong thread"
+            );
+            return;
         }
+        let title = thread_title(thread.name.as_deref(), &thread.preview);
+        let subtitle = format!(
+            "{} - {}",
+            thread_status_label(&thread.status),
+            thread.cwd.display()
+        );
+        target.update(cx, |chat, cx| {
+            chat.adopt_thread(thread, title.into(), subtitle.into());
+            cx.notify();
+        });
         tracing::info!(thread_id, "thread loaded");
     }
 
     pub(super) fn apply_bridge_error(&mut self, message: String, cx: &mut Context<Self>) {
         tracing::error!(error = %message, "codex app-server error");
-        self.ui_state.update(cx, |state, cx| {
-            state.clear_active_turn();
-            cx.notify();
-        });
         if let Some(chat) = self.active_chat_entity(cx) {
             let thread_id = chat.read(cx).id.clone();
             self.append_notice(&thread_id, format!("bridge-error-{thread_id}"), message, cx);
@@ -819,13 +1006,6 @@ impl CodexGui {
         self.state.update(cx, |state, cx| {
             state.projects.push(project.clone());
             state.sort_projects_by_recent_activity(cx);
-            let index = state
-                .projects
-                .iter()
-                .position(|candidate| candidate.read(cx).path.as_ref() == cwd)
-                .unwrap_or(0);
-            state.active_project = index;
-            state.active_projectless_chat = None;
             cx.notify();
         });
         Some(project)
@@ -856,7 +1036,7 @@ impl CodexGui {
         None
     }
 
-    fn append_notice(
+    pub(super) fn append_notice(
         &self,
         thread_id: &str,
         notice_id: String,

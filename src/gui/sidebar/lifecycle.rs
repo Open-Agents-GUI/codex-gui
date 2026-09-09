@@ -2,14 +2,14 @@ use super::{
     PAGE_SIZE, SIDEBAR_LIST_OVERDRAW, SIDEBAR_ROW_HEIGHT, Sidebar, SidebarRowDisplayStatus,
 };
 use crate::app::CodexGui;
-use crate::gui::GuiState;
+use crate::gui::WorkspaceState;
 use gpui::{Context, Entity, ListAlignment, ListState, WeakEntity};
 use std::collections::{HashMap, HashSet};
 
 impl Sidebar {
     pub fn new(
         parent: WeakEntity<CodexGui>,
-        state: Entity<GuiState>,
+        state: Entity<WorkspaceState>,
         cx: &mut Context<Self>,
     ) -> Self {
         let subscriptions = vec![cx.observe(&state, |view, _, cx| {

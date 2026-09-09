@@ -13,7 +13,7 @@ Codex app-server requests and notifications
                     ↓
                  CodexGui
                     ↓
-          GuiState + UiState entities
+     WorkspaceState + WindowState entities
                     ↓
      Sidebar / ChatPanel / ChatHistory views
 ```
@@ -42,6 +42,8 @@ The app-server protocol's `Thread` is the canonical local representation of conv
 - transient per-item lifecycle from `ItemStarted` and `ItemCompleted` notifications;
 - local notices that are not app-server `ThreadItem`s;
 - an item-location index used to apply streaming deltas efficiently.
+- thread-owned runtime state such as the active turn, loading/creation lifecycle, composer draft,
+  edit session, and effective thread settings.
 
 View choices such as expanded turns and expanded tool groups belong to `ChatHistory`, not `Thread` or `MessageState`.
 
@@ -56,10 +58,10 @@ Loaded threads and live threads must converge on the same `ChatState` representa
 
 ## Sidebar list state
 
-The sidebar is a lazy projection of canonical `GuiState` plus sidebar-owned view state such as collapsed projects and pagination limits:
+The sidebar is a lazy projection of canonical `WorkspaceState` plus sidebar-owned view state such as collapsed projects and pagination limits:
 
 ```text
-GuiState + sidebar view state
+WorkspaceState + sidebar view state
               ↓
    SidebarRowDisplayStatus
               ↓ row_at(index)
@@ -72,7 +74,7 @@ GuiState + sidebar view state
 - `ListState` stores virtual slots, measurements, focus metadata, and scroll position; it does not own sidebar data. Keep `ListState::item_count()` equal to `SidebarRowDisplayStatus::len()`.
 - Structural changes must go through the sidebar's explicit `insert_rows`, `remove_rows`, or `replace_rows` operations, which use `ListState::splice`. Do not reset `ListState` from `Render` when the item count changes.
 - Pagination inserts newly exposed slots before the existing pager, or replaces the final pager with those slots. Folding and expansion insert or remove only the active project's child range.
-- Model-driven notifications reconcile constant-size display metadata and apply structural operations without scanning all visible rows. Observe the active `ProjectState` as well as `GuiState`, because its chat count contributes to the projection.
+- Model-driven notifications reconcile constant-size display metadata and apply structural operations without scanning all visible rows. Observe the active `ProjectState` as well as `WorkspaceState`, because its chat count contributes to the projection.
 - `SidebarRow` may carry generic project/chat values; the production renderer specializes them to `Entity<ProjectState>` and `Entity<ChatState>` so each projected row is independently renderable.
 
 ## Chat history rendering
@@ -119,7 +121,7 @@ Transcript synchronization follows these rules:
 
 - Long-lived shared state is stored in `Entity<T>` and observed with `cx.observe` or `cx.subscribe_in`.
 - Mutate an entity through `update`, then call `cx.notify()` when its rendered output may have changed.
-- Keep protocol/application state in `GuiState` and `ChatState`; keep ephemeral interaction state in the owning view or `UiState`.
+- Keep cross-thread application state in `WorkspaceState`, thread-owned protocol/runtime state in `ChatState`, and window presentation state in `WindowState`. Pure widget machinery remains in the owning view.
 - UI components call application intents through the parent `WeakEntity<CodexGui>` instead of talking to the bridge directly.
 - Spawn asynchronous bridge work with `cx.spawn`, then apply results back on the GPUI thread with `this.update`.
 - Preserve stable protocol IDs through projections instead of using list positions as identity.

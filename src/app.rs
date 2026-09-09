@@ -1,5 +1,5 @@
 use crate::bridge::{AppServerBridge, BridgeEvent};
-use crate::gui::{ChatPanel, ChatState, GuiState, SideChat, Sidebar, UiState};
+use crate::gui::{ChatPanel, SideChat, Sidebar, WindowState, WorkspaceState};
 mod actions;
 mod effects;
 mod event_handler;
@@ -15,20 +15,20 @@ use gpui_component::ActiveTheme as _;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 pub struct CodexGui {
-    state: Entity<GuiState>,
-    ui_state: Entity<UiState>,
+    state: Entity<WorkspaceState>,
+    window_state: Entity<WindowState>,
     bridge: AppServerBridge,
-    pending_thread: Option<PendingThread>,
     sidebar: Entity<Sidebar>,
     chat_panel: Entity<ChatPanel>,
     side_chat: Entity<SideChat>,
     _bridge_task: Task<()>,
     _subscriptions: Vec<Subscription>,
+    pending_agent_message_delta_log: Option<PendingAgentMessageDeltaLog>,
 }
 
-struct PendingThread {
-    chat: Entity<ChatState>,
-    projectless: bool,
+struct PendingAgentMessageDeltaLog {
+    delta: String,
+    count: usize,
 }
 
 impl CodexGui {
@@ -38,12 +38,19 @@ impl CodexGui {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let state = cx.new(|_| GuiState::new());
-        let ui_state = cx.new(|_| UiState::new());
+        let state = cx.new(|_| WorkspaceState::new());
+        let window_state = cx.new(|_| WindowState::new());
         let parent = cx.entity().downgrade();
         let sidebar = cx.new(|cx| Sidebar::new(parent.clone(), state.clone(), cx));
-        let chat_panel = cx
-            .new(|cx| ChatPanel::new(parent.clone(), state.clone(), ui_state.clone(), window, cx));
+        let chat_panel = cx.new(|cx| {
+            ChatPanel::new(
+                parent.clone(),
+                state.clone(),
+                window_state.clone(),
+                window,
+                cx,
+            )
+        });
         let side_chat = cx.new(|cx| SideChat::new(state.clone(), cx));
 
         let bridge_task = cx.spawn(async move |this, cx| {
@@ -71,21 +78,21 @@ impl CodexGui {
 
         Self {
             state,
-            ui_state,
+            window_state,
             bridge,
-            pending_thread: None,
             sidebar,
             chat_panel,
             side_chat,
             _bridge_task: bridge_task,
             _subscriptions: vec![shutdown_subscription],
+            pending_agent_message_delta_log: None,
         }
     }
 }
 
 impl Render for CodexGui {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let side_chat_open = self.ui_state.read(cx).side_chat_open;
+        let side_chat_open = self.window_state.read(cx).side_chat_open;
 
         div()
             .size_full()

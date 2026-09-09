@@ -47,6 +47,7 @@ impl CodexGui {
 
         let thread_count = threads.len();
         let projectless_ids = projectless_thread_ids();
+        let default_settings = self.state.read(cx).new_chat_settings.clone();
         let mut project_paths = Vec::new();
         let mut threads_by_project = HashMap::<String, Vec<Thread>>::new();
         let mut projectless_threads = Vec::new();
@@ -77,8 +78,11 @@ impl CodexGui {
 
         for project in existing_projects {
             let cwd = project.read(cx).path.to_string();
-            let (chats, latest_thread_updated_at) =
-                loaded_chats(threads_by_project.remove(&cwd).unwrap_or_default(), cx);
+            let (chats, latest_thread_updated_at) = loaded_chats(
+                threads_by_project.remove(&cwd).unwrap_or_default(),
+                default_settings.clone(),
+                cx,
+            );
             project.update(cx, |project, cx| {
                 project.replace_loaded_chats(chats, latest_thread_updated_at);
                 cx.notify();
@@ -93,7 +97,8 @@ impl CodexGui {
             let Some(threads) = threads_by_project.remove(&cwd) else {
                 continue;
             };
-            let (chats, latest_thread_updated_at) = loaded_chats(threads, cx);
+            let (chats, latest_thread_updated_at) =
+                loaded_chats(threads, default_settings.clone(), cx);
             let name = super::thread_mapping::project_name_from_path(&cwd);
             discovered_projects.push(cx.new(|_| {
                 let mut project = ProjectState::new(name.into(), cwd.into(), chats);
@@ -105,7 +110,7 @@ impl CodexGui {
         let projectless_chats = if projectless_threads.is_empty() {
             Vec::new()
         } else {
-            loaded_chats(projectless_threads, cx).0
+            loaded_chats(projectless_threads, default_settings, cx).0
         };
 
         self.state.update(cx, |state, cx| {
@@ -125,7 +130,7 @@ impl CodexGui {
             projectless_count,
             "loaded threads from app server"
         );
-        let can_resume_default = !self.ui_state.read(cx).new_chat_open;
+        let can_resume_default = !self.window_state.read(cx).new_chat_open;
         if can_resume_default && let Some((_, thread_id)) = default_thread {
             if projectless_ids.contains(&thread_id) {
                 self.state.update(cx, |state, cx| {
@@ -136,16 +141,19 @@ impl CodexGui {
                     cx.notify();
                 });
             }
+            let Some(chat) = self.find_chat_entity(&thread_id, cx) else {
+                return;
+            };
             tracing::info!(thread_id, "loading thread");
-            self.ui_state.update(cx, |state, cx| {
-                state.begin_thread_load(thread_id.clone());
+            chat.update(cx, |chat, cx| {
+                chat.is_loading = true;
                 cx.notify();
             });
             let bridge = self.bridge.clone();
             cx.spawn(async move |this, cx| {
                 let result = bridge.resume_thread(thread_id.clone()).await;
                 let _ = this.update(cx, |view, cx| {
-                    view.apply_thread_resumed_result(&thread_id, result, cx)
+                    view.apply_thread_resumed_result(&chat, &thread_id, result, cx)
                 });
             })
             .detach();
@@ -184,7 +192,7 @@ impl CodexGui {
                         if let Some(effort) = settings.effort
                             && let Some(effort) = resolve_reasoning_effort(
                                 &effort,
-                                &state.chat_settings.model,
+                                &state.new_chat_settings.model,
                                 &state.available_models,
                             )
                         {
@@ -214,27 +222,42 @@ impl CodexGui {
         }
     }
 
-    pub(super) fn apply_thread_started_result(
+    pub(super) fn apply_pending_thread_started_result(
         &mut self,
+        chat: &Entity<ChatState>,
+        project: Option<&Entity<ProjectState>>,
+        projectless: bool,
         result: Result<Thread, BridgeError>,
         cx: &mut Context<Self>,
     ) {
         match result {
-            Ok(thread) => self.apply_thread_started(thread, cx),
+            Ok(thread) => self.apply_pending_thread_started(chat, project, projectless, thread, cx),
             Err(err) => {
                 let message = err.to_string();
-                if let Some(pending) = self.pending_thread.take() {
-                    pending.chat.update(cx, |chat, cx| {
-                        if let Some((client_id, _)) = chat.pending_user_message_request() {
-                            chat.fail_user_message(&client_id, message.clone());
-                        }
-                        chat.upsert_notice("thread-start-error".into(), message.clone());
-                        cx.notify();
-                    });
-                    tracing::error!(error = %message, "failed to start thread");
-                } else {
-                    self.apply_bridge_error(message, cx);
-                }
+                chat.update(cx, |chat, cx| {
+                    chat.is_creating = false;
+                    if let Some((client_id, _)) = chat.pending_user_message_request() {
+                        chat.fail_user_message(&client_id, message.clone());
+                    }
+                    chat.upsert_notice("thread-start-error".into(), message.clone());
+                    cx.notify();
+                });
+                tracing::error!(error = %message, "failed to start thread");
+            }
+        }
+    }
+
+    pub(super) fn apply_forked_thread_result(
+        &mut self,
+        source_chat: &Entity<ChatState>,
+        source_thread_id: &str,
+        result: Result<Thread, BridgeError>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(thread) => self.apply_forked_thread(source_chat, thread, cx),
+            Err(error) => {
+                self.apply_thread_error(source_thread_id, "fork", error.to_string(), false, cx)
             }
         }
     }
@@ -243,6 +266,7 @@ impl CodexGui {
         &mut self,
         thread_id: &str,
         client_user_message_id: &str,
+        finish_turn_on_error: bool,
         result: Result<(), BridgeError>,
         cx: &mut Context<Self>,
     ) {
@@ -256,18 +280,11 @@ impl CodexGui {
             error = %message,
             "user message submission failed"
         );
-        self.ui_state.update(cx, |state, cx| {
-            if state
-                .active_turn
-                .as_ref()
-                .is_some_and(|turn| turn.thread_id == thread_id)
-            {
-                state.clear_active_turn();
-                cx.notify();
-            }
-        });
         if let Some(chat) = self.find_chat_entity(thread_id, cx) {
             chat.update(cx, |chat, cx| {
+                if finish_turn_on_error {
+                    chat.finish_turn(None);
+                }
                 chat.fail_user_message(client_user_message_id, message.clone());
                 chat.upsert_notice(format!("send-error-{client_user_message_id}"), message);
                 cx.notify();
@@ -277,16 +294,26 @@ impl CodexGui {
 
     pub(super) fn apply_thread_resumed_result(
         &mut self,
+        chat: &Entity<ChatState>,
         requested_thread_id: &str,
         result: Result<Thread, BridgeError>,
         cx: &mut Context<Self>,
     ) {
         match result {
-            Ok(thread) => self.apply_thread_resumed(thread, cx),
-            Err(err) => self.apply_bridge_error(err.to_string(), cx),
+            Ok(thread) => self.apply_thread_resumed(chat, thread, cx),
+            Err(err) => {
+                let message = err.to_string();
+                chat.update(cx, |chat, cx| {
+                    chat.upsert_notice(
+                        format!("resume-error-{requested_thread_id}"),
+                        message.clone(),
+                    );
+                    cx.notify();
+                });
+            }
         }
-        self.ui_state.update(cx, |state, cx| {
-            state.finish_thread_load(requested_thread_id);
+        chat.update(cx, |chat, cx| {
+            chat.is_loading = false;
             cx.notify();
         });
     }
@@ -300,10 +327,28 @@ impl CodexGui {
             self.apply_bridge_error(err.to_string(), cx);
         }
     }
+
+    pub(super) fn apply_thread_unit_result(
+        &mut self,
+        thread_id: &str,
+        operation: &str,
+        result: Result<(), BridgeError>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(error) = result {
+            self.append_notice(
+                thread_id,
+                format!("{operation}-error-{thread_id}"),
+                error.to_string(),
+                cx,
+            );
+        }
+    }
 }
 
 fn loaded_chats(
     threads: Vec<Thread>,
+    settings: crate::gui::ChatSettings,
     cx: &mut Context<CodexGui>,
 ) -> (Vec<Entity<ChatState>>, Option<i64>) {
     let latest_thread_updated_at = threads.iter().map(|thread| thread.updated_at).max();
@@ -312,7 +357,7 @@ fn loaded_chats(
     } else {
         threads
             .into_iter()
-            .map(|thread| chat_entity_from_thread(thread, cx))
+            .map(|thread| chat_entity_from_thread(thread, settings.clone(), cx))
             .collect()
     };
     (chats, latest_thread_updated_at)

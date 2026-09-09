@@ -55,7 +55,7 @@ impl ExpandedProject {
     }
 }
 
-/// Lightweight, lazily indexed projection of `GuiState + Sidebar` view state.
+/// Lightweight, lazily indexed projection of `WorkspaceState + Sidebar` view state.
 ///
 /// This stores only counts and offsets. It does not materialize one value per
 /// sidebar row; [`Self::row_at`] creates a row only when GPUI asks to render it.

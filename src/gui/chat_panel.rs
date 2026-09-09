@@ -1,7 +1,7 @@
 use crate::app::CodexGui;
 use crate::gui::{
-    ApprovalsReviewer, ChatHistory, ChatHistoryEvent, GuiState, UiState,
-    approvals_reviewer_label, new_client_user_message_id,
+    ApprovalsReviewer, ChatHistory, ChatHistoryEvent, ChatState, EditingMessage, WindowState,
+    WorkspaceState, approvals_reviewer_label, new_client_user_message_id,
 };
 use gpui::{
     Context, Entity, IntoElement, MouseButton, ParentElement, Render, Styled, Subscription,
@@ -18,27 +18,28 @@ use gpui_component::{
 
 pub struct ChatPanel {
     parent: WeakEntity<CodexGui>,
-    state: Entity<GuiState>,
-    ui_state: Entity<UiState>,
+    state: Entity<WorkspaceState>,
+    window_state: Entity<WindowState>,
     history: Entity<ChatHistory>,
     composer_input: Entity<TextareaState>,
-    editing_message: Option<EditingMessage>,
+    composer_context: ComposerContext,
+    composer_chat_subscription: Option<Subscription>,
     project_path_input: Entity<InputState>,
     should_move_window: bool,
     _subscriptions: Vec<Subscription>,
 }
 
-struct EditingMessage {
-    source_thread_id: String,
-    turn_id: String,
-    previous_turn_id: Option<String>,
+#[derive(Clone, PartialEq)]
+enum ComposerContext {
+    NewChat,
+    Chat(Entity<ChatState>),
 }
 
 impl ChatPanel {
     pub fn new(
         parent: WeakEntity<CodexGui>,
-        state: Entity<GuiState>,
-        ui_state: Entity<UiState>,
+        state: Entity<WorkspaceState>,
+        window_state: Entity<WindowState>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -55,18 +56,23 @@ impl ChatPanel {
                 .placeholder("/path/to/project")
         });
         let subscriptions = vec![
-            cx.observe(&state, |_, _, cx| cx.notify()),
-            cx.observe(&ui_state, |_, _, cx| cx.notify()),
+            cx.observe_in(&state, window, |view, _, window, cx| {
+                view.sync_composer_context(window, cx);
+                cx.notify();
+            }),
+            cx.observe_in(&window_state, window, |view, _, window, cx| {
+                view.sync_composer_context(window, cx);
+                cx.notify();
+            }),
             cx.subscribe_in(&composer_input, window, |view, _, event, window, cx| {
+                view.save_composer_draft(cx);
                 if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
                     let answering_input = view
-                        .state
-                        .read(cx)
-                        .active_chat_entity(cx)
+                        .composer_chat()
                         .is_some_and(|chat| chat.read(cx).pending_freeform_input().is_some());
                     if answering_input {
                         view.send_composer_turn(window, cx);
-                    } else if view.active_chat_turn_running(cx) && view.editing_message.is_none() {
+                    } else if view.active_chat_turn_running(cx) && !view.active_chat_editing(cx) {
                         view.steer_composer_turn(window, cx);
                     } else {
                         view.send_composer_turn(window, cx);
@@ -75,53 +81,61 @@ impl ChatPanel {
             }),
             cx.subscribe_in(&history, window, |view, _, event, window, cx| match event {
                 ChatHistoryEvent::EditUserMessage {
+                    chat,
                     turn_id,
                     previous_turn_id,
                     body,
                 } => view.begin_editing_message(
+                    chat.clone(),
                     turn_id.clone(),
                     previous_turn_id.clone(),
                     body,
                     window,
                     cx,
                 ),
-                ChatHistoryEvent::ForkTurn { turn_id } => {
-                    view.fork_chat_through(turn_id.clone(), cx)
+                ChatHistoryEvent::ForkTurn { chat, turn_id } => {
+                    view.fork_chat_through(chat.clone(), turn_id.clone(), cx)
                 }
                 ChatHistoryEvent::ResolveApproval {
+                    chat,
                     request_id,
                     approved,
                 } => {
                     let parent = view.parent.clone();
+                    let chat = chat.clone();
                     let request_id = request_id.clone();
                     let approved = *approved;
                     cx.defer(move |cx| {
                         let _ = parent.update(cx, |parent, cx| {
-                            parent.resolve_approval(request_id, approved, cx)
+                            parent.resolve_approval(chat, request_id, approved, cx)
                         });
                     });
                 }
                 ChatHistoryEvent::AnswerInput {
+                    chat,
                     request_id,
                     question_id,
                     answer,
                 } => {
                     let parent = view.parent.clone();
+                    let chat = chat.clone();
                     let request_id = request_id.clone();
                     let question_id = question_id.clone();
                     let answer = answer.clone();
                     cx.defer(move |cx| {
                         let _ = parent.update(cx, |parent, cx| {
-                            parent.answer_server_input(request_id, question_id, answer, cx)
+                            parent.answer_server_input(chat, request_id, question_id, answer, cx)
                         });
                     });
                 }
-                ChatHistoryEvent::RejectInput { request_id } => {
+                ChatHistoryEvent::RejectInput { chat, request_id } => {
                     let parent = view.parent.clone();
+                    let chat = chat.clone();
                     let request_id = request_id.clone();
                     cx.defer(move |cx| {
-                        let _ = parent
-                            .update(cx, |parent, cx| parent.reject_server_input(request_id, cx));
+                        let _ = parent.update(cx, |parent, cx| {
+                            parent.reject_server_input(chat, request_id, cx)
+                        });
                     });
                 }
                 ChatHistoryEvent::DismissNotice { chat_id, notice_id } => {
@@ -145,20 +159,77 @@ impl ChatPanel {
         Self {
             parent,
             state,
-            ui_state,
+            window_state,
             history,
             composer_input,
-            editing_message: None,
+            composer_context: ComposerContext::NewChat,
+            composer_chat_subscription: None,
             project_path_input,
             should_move_window: false,
             _subscriptions: subscriptions,
         }
     }
 
+    fn desired_composer_context(&self, cx: &mut Context<Self>) -> ComposerContext {
+        if self.window_state.read(cx).new_chat_open {
+            ComposerContext::NewChat
+        } else {
+            self.state
+                .read(cx)
+                .active_chat_entity(cx)
+                .map(ComposerContext::Chat)
+                .unwrap_or(ComposerContext::NewChat)
+        }
+    }
+
+    fn save_composer_draft(&self, cx: &mut Context<Self>) {
+        let draft = self.composer_input.read(cx).value().to_string();
+        match &self.composer_context {
+            ComposerContext::NewChat => self.window_state.update(cx, |state, _| {
+                state.new_chat_draft = draft;
+            }),
+            ComposerContext::Chat(chat) => chat.update(cx, |chat, _| {
+                chat.draft = draft;
+            }),
+        }
+    }
+
+    fn sync_composer_context(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let next = self.desired_composer_context(cx);
+        if next == self.composer_context {
+            return;
+        }
+        self.save_composer_draft(cx);
+        let draft = match &next {
+            ComposerContext::NewChat => self.window_state.read(cx).new_chat_draft.clone(),
+            ComposerContext::Chat(chat) => chat.read(cx).draft.clone(),
+        };
+        self.composer_chat_subscription = match &next {
+            ComposerContext::NewChat => None,
+            ComposerContext::Chat(chat) => Some(cx.observe(chat, |_, _, cx| cx.notify())),
+        };
+        self.composer_context = next;
+        self.composer_input
+            .update(cx, |input, cx| input.set_value(draft, window, cx));
+    }
+
+    fn composer_chat(&self) -> Option<Entity<ChatState>> {
+        match &self.composer_context {
+            ComposerContext::NewChat => None,
+            ComposerContext::Chat(chat) => Some(chat.clone()),
+        }
+    }
+
+    fn active_chat_editing(&self, cx: &mut Context<Self>) -> bool {
+        self.composer_chat()
+            .is_some_and(|chat| chat.read(cx).editing_message.is_some())
+    }
+
     fn send_composer_turn(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.user_message_sending(cx) {
             return;
         }
+        let target_chat = self.composer_chat();
         let (text, source_bounds) = self.composer_input.update(cx, |input, cx| {
             let text = input.value().trim().to_string();
             let source_bounds = input.text_bounds().unwrap_or_else(|| input.input_bounds());
@@ -170,21 +241,28 @@ impl ChatPanel {
         if text.is_empty() {
             return;
         }
-        let pending_input = self
-            .state
-            .read(cx)
-            .active_chat_entity(cx)
+        let pending_input = target_chat
+            .as_ref()
             .and_then(|chat| chat.read(cx).pending_freeform_input());
         if let Some((request_id, question_id)) = pending_input {
             let parent = self.parent.clone();
+            let chat = target_chat.expect("pending input belongs to a chat");
             cx.defer(move |cx| {
                 let _ = parent.update(cx, |parent, cx| {
-                    parent.answer_server_input(request_id, question_id, text, cx)
+                    parent.answer_server_input(chat, request_id, question_id, text, cx)
                 });
             });
             return;
         }
-        let editing_message = self.editing_message.take();
+        let editing_message = target_chat.as_ref().and_then(|chat| {
+            chat.update(cx, |chat, cx| {
+                let editing = chat.editing_message.take();
+                if editing.is_some() {
+                    cx.notify();
+                }
+                editing
+            })
+        });
         let client_user_message_id = new_client_user_message_id();
         if editing_message.is_none() {
             self.history.update(cx, |history, cx| {
@@ -195,8 +273,11 @@ impl ChatPanel {
         cx.defer(move |cx| {
             let _ = parent.update(cx, |parent, cx| {
                 if let Some(editing_message) = editing_message {
+                    let Some(chat) = target_chat else {
+                        return;
+                    };
                     parent.submit_edited_turn_text(
-                        editing_message.source_thread_id,
+                        chat,
                         editing_message.turn_id,
                         editing_message.previous_turn_id,
                         client_user_message_id,
@@ -204,7 +285,12 @@ impl ChatPanel {
                         cx,
                     );
                 } else {
-                    parent.submit_turn_text(client_user_message_id, text, cx);
+                    match target_chat {
+                        Some(chat) => {
+                            parent.submit_turn_text(chat, client_user_message_id, text, cx)
+                        }
+                        None => parent.submit_new_turn_text(client_user_message_id, text, cx),
+                    }
                 }
             });
         });
@@ -212,6 +298,7 @@ impl ChatPanel {
 
     fn begin_editing_message(
         &mut self,
+        chat: Entity<ChatState>,
         turn_id: String,
         previous_turn_id: Option<String>,
         body: &str,
@@ -221,18 +308,16 @@ impl ChatPanel {
         if self.active_chat_turn_running(cx) {
             return;
         }
-        let Some(source_thread_id) = self
-            .state
-            .read(cx)
-            .active_chat_entity(cx)
-            .map(|chat| chat.read(cx).id.clone())
-        else {
+        if self.composer_chat().as_ref() != Some(&chat) {
             return;
-        };
-        self.editing_message = Some(EditingMessage {
-            source_thread_id,
-            turn_id,
-            previous_turn_id,
+        }
+        chat.update(cx, |chat, cx| {
+            chat.editing_message = Some(EditingMessage {
+                turn_id,
+                previous_turn_id,
+            });
+            chat.draft = body.to_string();
+            cx.notify();
         });
         self.composer_input.update(cx, |input, cx| {
             input.set_value(body, window, cx);
@@ -244,6 +329,12 @@ impl ChatPanel {
         if self.user_message_sending(cx) {
             return;
         }
+        let Some(chat) = self.composer_chat() else {
+            return;
+        };
+        let Some(turn_id) = chat.read(cx).active_turn_id().map(str::to_owned) else {
+            return;
+        };
         let (text, source_bounds) = self.composer_input.update(cx, |input, cx| {
             let text = input.value().trim().to_string();
             let source_bounds = input.text_bounds().unwrap_or_else(|| input.input_bounds());
@@ -262,45 +353,43 @@ impl ChatPanel {
         let parent = self.parent.clone();
         cx.defer(move |cx| {
             let _ = parent.update(cx, |parent, cx| {
-                parent.steer_turn_text(client_user_message_id, text, cx)
+                parent.steer_turn_text(chat, turn_id, client_user_message_id, text, cx)
             });
         });
     }
 
     fn stop_active_turn(&mut self, cx: &mut Context<Self>) {
+        let Some(chat) = self.composer_chat() else {
+            return;
+        };
+        let Some(turn_id) = chat.read(cx).active_turn_id().map(str::to_owned) else {
+            return;
+        };
         let parent = self.parent.clone();
         cx.defer(move |cx| {
-            let _ = parent.update(cx, |parent, cx| parent.stop_active_turn(cx));
+            let _ = parent.update(cx, |parent, cx| parent.stop_turn(chat, turn_id, cx));
         });
     }
 
     fn active_chat_turn_running(&self, cx: &mut Context<Self>) -> bool {
-        let Some(active_thread_id) = self
-            .state
-            .read(cx)
-            .active_chat_entity(cx)
-            .map(|chat| chat.read(cx).id.clone())
-        else {
-            return false;
-        };
-        self.ui_state
-            .read(cx)
-            .active_turn
-            .as_ref()
-            .is_some_and(|active_turn| active_turn.thread_id == active_thread_id)
+        self.composer_chat()
+            .is_some_and(|chat| chat.read(cx).active_turn.is_some())
     }
 
     fn user_message_sending(&self, cx: &mut Context<Self>) -> bool {
-        self.state
-            .read(cx)
-            .active_chat_entity(cx)
+        self.composer_chat()
             .is_some_and(|chat| chat.read(cx).user_message_is_sending())
     }
 
-    fn fork_chat_through(&mut self, turn_id: String, cx: &mut Context<Self>) {
+    fn fork_chat_through(
+        &mut self,
+        chat: Entity<ChatState>,
+        turn_id: String,
+        cx: &mut Context<Self>,
+    ) {
         let parent = self.parent.clone();
         cx.defer(move |cx| {
-            let _ = parent.update(cx, |parent, cx| parent.fork_chat_through(turn_id, cx));
+            let _ = parent.update(cx, |parent, cx| parent.fork_chat_through(chat, turn_id, cx));
         });
     }
 
@@ -343,14 +432,19 @@ impl ChatPanel {
     }
 
     fn composer_surface(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let (settings, models, permission_profiles) = {
+        let settings_chat = self.composer_chat();
+        let (default_settings, models, permission_profiles) = {
             let state = self.state.read(cx);
             (
-                state.chat_settings.clone(),
+                state.new_chat_settings.clone(),
                 state.available_models.clone(),
                 state.permission_profiles.clone(),
             )
         };
+        let settings = settings_chat
+            .as_ref()
+            .map(|chat| chat.read(cx).settings.clone())
+            .unwrap_or(default_settings);
         let model_label =
             if let Some(model) = models.iter().find(|model| model.id == settings.model) {
                 model.display_name.clone()
@@ -374,9 +468,7 @@ impl ChatPanel {
             });
         let turn_running = self.active_chat_turn_running(cx);
         let answering_input = self
-            .state
-            .read(cx)
-            .active_chat_entity(cx)
+            .composer_chat()
             .is_some_and(|chat| chat.read(cx).pending_freeform_input().is_some());
         let can_stop = turn_running && !answering_input;
         let user_message_sending = self.user_message_sending(cx);
@@ -427,6 +519,7 @@ impl ChatPanel {
                                     .tooltip("Model settings")
                                     .dropdown_menu({
                                         let parent = self.parent.clone();
+                                        let settings_chat = settings_chat.clone();
                                         let models = models.clone();
                                         let selected_model = settings.model.clone();
                                         move |menu, _, _| {
@@ -445,14 +538,21 @@ impl ChatPanel {
                                                 let id = model.id.clone();
                                                 let label = model.display_name.clone();
                                                 let parent = parent.clone();
+                                                let settings_chat = settings_chat.clone();
                                                 menu = menu.item(
                                                     PopupMenuItem::new(label)
                                                         .checked(model.id == selected_model)
                                                         .on_click(move |_, _, cx| {
                                                             let id = id.clone();
+                                                            let settings_chat =
+                                                                settings_chat.clone();
                                                             let _ =
                                                                 parent.update(cx, |parent, cx| {
-                                                                    parent.set_model(id, cx)
+                                                                    parent.set_model(
+                                                                        settings_chat,
+                                                                        id,
+                                                                        cx,
+                                                                    )
                                                                 });
                                                         }),
                                                 );
@@ -471,6 +571,7 @@ impl ChatPanel {
                                     .tooltip("Permission settings")
                                     .dropdown_menu({
                                         let parent = self.parent.clone();
+                                        let settings_chat = settings_chat.clone();
                                         let settings = settings.clone();
                                         let permission_profiles = permission_profiles.clone();
                                         move |menu, _, _| {
@@ -481,6 +582,7 @@ impl ChatPanel {
                                             for profile in &permission_profiles {
                                                 let id = profile.id.clone();
                                                 let parent = parent.clone();
+                                                let settings_chat = settings_chat.clone();
                                                 menu = menu.item(
                                                     PopupMenuItem::new(profile.label.clone())
                                                         .checked(
@@ -489,10 +591,14 @@ impl ChatPanel {
                                                         )
                                                         .on_click(move |_, _, cx| {
                                                             let id = id.clone();
+                                                            let settings_chat =
+                                                                settings_chat.clone();
                                                             let _ =
                                                                 parent.update(cx, |parent, cx| {
                                                                     parent.set_permission_profile(
-                                                                        id, cx,
+                                                                        settings_chat,
+                                                                        id,
+                                                                        cx,
                                                                     )
                                                                 });
                                                         }),
@@ -506,19 +612,24 @@ impl ChatPanel {
                                                 ApprovalsReviewer::AutoReview,
                                             ] {
                                                 let parent = parent.clone();
+                                                let settings_chat = settings_chat.clone();
                                                 menu = menu.item(
-                                                    PopupMenuItem::new(approvals_reviewer_label(reviewer))
-                                                        .checked(
-                                                            settings.approvals_reviewer == reviewer,
-                                                        )
-                                                        .on_click(move |_, _, cx| {
-                                                            let _ =
-                                                                parent.update(cx, |parent, cx| {
-                                                                    parent.set_approvals_reviewer(
-                                                                        reviewer, cx,
-                                                                    )
-                                                                });
-                                                        }),
+                                                    PopupMenuItem::new(approvals_reviewer_label(
+                                                        reviewer,
+                                                    ))
+                                                    .checked(
+                                                        settings.approvals_reviewer == reviewer,
+                                                    )
+                                                    .on_click(move |_, _, cx| {
+                                                        let settings_chat = settings_chat.clone();
+                                                        let _ = parent.update(cx, |parent, cx| {
+                                                            parent.set_approvals_reviewer(
+                                                                settings_chat,
+                                                                reviewer,
+                                                                cx,
+                                                            )
+                                                        });
+                                                    }),
                                                 );
                                             }
                                             menu
@@ -535,20 +646,28 @@ impl ChatPanel {
                                     .tooltip("Thinking effort settings")
                                     .dropdown_menu({
                                         let parent = self.parent.clone();
+                                        let settings_chat = settings_chat.clone();
                                         let selected_effort = settings.effort.clone();
                                         move |menu, _, _| {
                                             let mut menu = menu.min_w(190.).check_side(Side::Left);
                                             for effort in &effort_options {
                                                 let value = effort.clone();
                                                 let parent = parent.clone();
+                                                let settings_chat = settings_chat.clone();
                                                 menu = menu.item(
                                                     PopupMenuItem::new(title_case(effort))
                                                         .checked(*effort == selected_effort)
                                                         .on_click(move |_, _, cx| {
                                                             let value = value.clone();
+                                                            let settings_chat =
+                                                                settings_chat.clone();
                                                             let _ =
                                                                 parent.update(cx, |parent, cx| {
-                                                                    parent.set_effort(value, cx)
+                                                                    parent.set_effort(
+                                                                        settings_chat,
+                                                                        value,
+                                                                        cx,
+                                                                    )
                                                                 });
                                                         }),
                                                 );
@@ -592,11 +711,9 @@ impl ChatPanel {
                                     .tooltip(if can_stop { "Stop" } else { "Send" })
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         let answering_input =
-                                            view.state.read(cx).active_chat_entity(cx).is_some_and(
-                                                |chat| {
-                                                    chat.read(cx).pending_freeform_input().is_some()
-                                                },
-                                            );
+                                            view.composer_chat().is_some_and(|chat| {
+                                                chat.read(cx).pending_freeform_input().is_some()
+                                            });
                                         if view.active_chat_turn_running(cx) && !answering_input {
                                             view.stop_active_turn(cx);
                                         } else {
@@ -629,7 +746,7 @@ impl ChatPanel {
                 state.projects.clone(),
                 state.active_project,
                 active_project_name,
-                self.ui_state.read(cx).new_chat_projectless || state.projects.is_empty(),
+                self.window_state.read(cx).new_chat_projectless || state.projects.is_empty(),
             )
         };
         let heading = if projectless {
@@ -758,28 +875,19 @@ impl ChatPanel {
 
 impl Render for ChatPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let new_chat_open = self.ui_state.read(cx).new_chat_open;
+        let new_chat_open = self.window_state.read(cx).new_chat_open;
         let active_chat = self.state.read(cx).active_chat_entity(cx);
-        let (title, subtitle, active_thread_id) = active_chat
+        let (title, subtitle) = active_chat
+            .as_ref()
             .map(|chat| {
                 let chat = chat.read(cx);
-                (
-                    chat.title.to_string(),
-                    chat.subtitle.to_string(),
-                    Some(chat.id.clone()),
-                )
+                (chat.title.to_string(), chat.subtitle.to_string())
             })
-            .unwrap_or_else(|| {
-                (
-                    "No thread selected".into(),
-                    "Start a Codex thread".into(),
-                    None,
-                )
-            });
+            .unwrap_or_else(|| ("No thread selected".into(), "Start a Codex thread".into()));
         let thread_loading = !new_chat_open
-            && active_thread_id.as_ref().is_some_and(|thread_id| {
-                self.ui_state.read(cx).loading_thread_id.as_ref() == Some(thread_id)
-            });
+            && active_chat
+                .as_ref()
+                .is_some_and(|chat| chat.read(cx).is_loading);
 
         div()
             .flex_1()

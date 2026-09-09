@@ -1,11 +1,12 @@
 use super::CodexGui;
-use crate::gui::{ChatState, HistoryNotice, single_line_title};
+use crate::gui::{ChatSettings, ChatState, HistoryNotice, single_line_title};
 use codex_app_server_protocol::{Thread, ThreadStatus};
 use gpui::{AppContext, Context, Entity};
 use std::path::Path;
 
 pub(super) fn chat_entity_from_thread(
     thread: Thread,
+    settings: ChatSettings,
     cx: &mut Context<CodexGui>,
 ) -> Entity<ChatState> {
     let title = thread_title(thread.name.as_deref(), &thread.preview);
@@ -14,7 +15,7 @@ pub(super) fn chat_entity_from_thread(
         thread_status_label(&thread.status),
         thread.cwd.display()
     );
-    cx.new(|_| ChatState::from_thread(thread, title.into(), subtitle.into()))
+    cx.new(|_| ChatState::from_thread(thread, title.into(), subtitle.into(), settings))
 }
 
 pub(super) fn thread_title(name: Option<&str>, preview: &str) -> String {
@@ -60,37 +61,9 @@ pub(super) fn thread_status_label(status: &ThreadStatus) -> &'static str {
     }
 }
 
-pub(super) fn should_start_thread_for_turn(
-    new_chat_open: bool,
-    active_thread_id: Option<&str>,
-) -> bool {
-    new_chat_open || active_thread_id.is_none()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn new_chat_turn_starts_thread_even_when_an_active_thread_exists() {
-        assert!(should_start_thread_for_turn(
-            true,
-            Some("existing-thread-id")
-        ));
-    }
-
-    #[test]
-    fn existing_chat_turn_reuses_active_thread() {
-        assert!(!should_start_thread_for_turn(
-            false,
-            Some("existing-thread-id")
-        ));
-    }
-
-    #[test]
-    fn missing_active_chat_starts_thread() {
-        assert!(should_start_thread_for_turn(false, None));
-    }
 
     #[test]
     fn thread_title_prefers_name() {

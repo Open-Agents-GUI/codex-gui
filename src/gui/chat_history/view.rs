@@ -15,7 +15,7 @@ use gpui_component::{
     text::{MarkdownExtensions, TextView, TextViewState, TextViewStyle},
 };
 
-use crate::gui::{ChatState, GuiState, widgets::render_notice};
+use crate::gui::{ChatState, WorkspaceState, widgets::render_notice};
 
 use super::{
     blocks::BlockId,
@@ -26,7 +26,7 @@ use super::{
 };
 
 pub struct ChatHistory {
-    state: Entity<GuiState>,
+    state: Entity<WorkspaceState>,
     active_chat: Option<Entity<ChatState>>,
     _state_subscription: Subscription,
     chat_subscription: Option<Subscription>,
@@ -45,23 +45,28 @@ pub struct ChatHistory {
 #[derive(Clone)]
 pub(crate) enum ChatHistoryEvent {
     EditUserMessage {
+        chat: Entity<ChatState>,
         turn_id: String,
         previous_turn_id: Option<String>,
         body: String,
     },
     ForkTurn {
+        chat: Entity<ChatState>,
         turn_id: String,
     },
     ResolveApproval {
+        chat: Entity<ChatState>,
         request_id: RequestId,
         approved: bool,
     },
     AnswerInput {
+        chat: Entity<ChatState>,
         request_id: RequestId,
         question_id: String,
         answer: String,
     },
     RejectInput {
+        chat: Entity<ChatState>,
         request_id: RequestId,
     },
     DismissNotice {
@@ -71,7 +76,7 @@ pub(crate) enum ChatHistoryEvent {
 }
 
 impl ChatHistory {
-    pub fn new(state: Entity<GuiState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<WorkspaceState>, cx: &mut Context<Self>) -> Self {
         let active_chat = active_chat_entity(&state, cx);
         let chat_subscription = subscribe_to_chat(active_chat.as_ref(), cx);
         let state_subscription = cx.observe(&state, |history, _, cx| {
@@ -218,7 +223,11 @@ impl ChatHistory {
         body: String,
         cx: &mut Context<Self>,
     ) {
+        let Some(chat) = self.active_chat.clone() else {
+            return;
+        };
         cx.emit(ChatHistoryEvent::EditUserMessage {
+            chat,
             turn_id,
             previous_turn_id,
             body,
@@ -226,7 +235,10 @@ impl ChatHistory {
     }
 
     pub(super) fn fork_turn(&mut self, turn_id: String, cx: &mut Context<Self>) {
-        cx.emit(ChatHistoryEvent::ForkTurn { turn_id });
+        let Some(chat) = self.active_chat.clone() else {
+            return;
+        };
+        cx.emit(ChatHistoryEvent::ForkTurn { chat, turn_id });
     }
 
     pub(super) fn resolve_approval(
@@ -235,7 +247,11 @@ impl ChatHistory {
         approved: bool,
         cx: &mut Context<Self>,
     ) {
+        let Some(chat) = self.active_chat.clone() else {
+            return;
+        };
         cx.emit(ChatHistoryEvent::ResolveApproval {
+            chat,
             request_id,
             approved,
         });
@@ -248,7 +264,11 @@ impl ChatHistory {
         answer: String,
         cx: &mut Context<Self>,
     ) {
+        let Some(chat) = self.active_chat.clone() else {
+            return;
+        };
         cx.emit(ChatHistoryEvent::AnswerInput {
+            chat,
             request_id,
             question_id,
             answer,
@@ -256,7 +276,10 @@ impl ChatHistory {
     }
 
     pub(super) fn reject_input(&mut self, request_id: RequestId, cx: &mut Context<Self>) {
-        cx.emit(ChatHistoryEvent::RejectInput { request_id });
+        let Some(chat) = self.active_chat.clone() else {
+            return;
+        };
+        cx.emit(ChatHistoryEvent::RejectInput { chat, request_id });
     }
 
     pub(super) fn dismiss_notice(&mut self, notice_id: String, cx: &mut Context<Self>) {
@@ -424,7 +447,7 @@ impl Render for ChatHistory {
                     .selectable(true)
                     .scrollable(true)
                     .scroll_bottom_padding(gpui::relative(0.3))
-                    .content_max_width(px(820.))
+                    .content_max_width(px(1500.))
                     .size_full()
                     .min_w_0()
                     .text_base()
@@ -451,7 +474,7 @@ fn subscribe_to_chat(
 }
 
 fn active_chat_entity(
-    state: &Entity<GuiState>,
+    state: &Entity<WorkspaceState>,
     cx: &mut Context<ChatHistory>,
 ) -> Option<Entity<ChatState>> {
     state.read(cx).active_chat_entity(cx)
