@@ -13,15 +13,15 @@ name = "tool-render-gallery"
 path = "src/bin/tool_render_gallery.rs"
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
+gpui = { git = "https://github.com/Open-Agents-GUI/zed.git", rev = "54dea564e795ef4e05c6533e630583d62b9bffa8" }
+gpui_platform = { git = "https://github.com/Open-Agents-GUI/zed.git", rev = "54dea564e795ef4e05c6533e630583d62b9bffa8", features = [
     "font-kit",
     "runtime_shaders",
     "wayland",
     "x11",
 ] }
-gpui-component = { path = "vendor/gpui-component/crates/ui" }
-gpui-component-assets = { path = "vendor/gpui-component/crates/assets" }
+gpui-component = { git = "https://github.com/Open-Agents-GUI/gpui-kit.git", rev = "2bb6ce244287f41c8a855aeb4a3fe4c185e26881" }
+gpui-component-assets = { git = "https://github.com/Open-Agents-GUI/gpui-kit.git", rev = "2bb6ce244287f41c8a855aeb4a3fe4c185e26881" }
 ratex-layout = "0.1.14"
 ratex-parser = "0.1.14"
 ratex-svg = { version = "0.1.14", features = ["embed-fonts"] }
@@ -53,7 +53,7 @@ objc2-app-kit = { version = "0.2.2", features = ["NSResponder", "NSView", "NSWin
 raw-window-handle = "0.6"
 
 [dev-dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", features = [
+gpui = { git = "https://github.com/Open-Agents-GUI/zed.git", rev = "54dea564e795ef4e05c6533e630583d62b9bffa8", features = [
     "test-support",
 ] }
 
