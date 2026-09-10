@@ -14,11 +14,27 @@ struct AppearingState {
     natural_height: Option<Pixels>,
 }
 
+/// Which layout strategy `Appearing` used for the current frame.
+///
+/// `request_layout` picks one and passes it to `prepaint` so both phases agree:
+/// a fully revealed child is laid out as a normal child (its size is known this
+/// frame), while an animating child is a leaf measured in `prepaint`.
+pub enum AppearingMode {
+    /// Content is fully revealed; the child participates in this frame's layout.
+    Full,
+    /// Content is animating in; the height grows toward the measured natural size.
+    Animating,
+}
+
 /// Reveals newly inserted transcript content from zero to its natural height.
 ///
-/// The child remains laid out at full size while a shrinking layout box and
-/// content mask expose only the animated portion. This keeps text and controls
-/// from reflowing during the transition.
+/// While the content is animating in, the child remains laid out at full size
+/// while a shrinking layout box and content mask expose only the animated
+/// portion. This keeps text and controls from reflowing during the transition.
+///
+/// Once the content is fully revealed the child is laid out normally, so its
+/// size is known in the same frame it first appears. This avoids a transient
+/// zero-height frame when an already-revealed block scrolls back into view.
 pub struct Appearing {
     id: ElementId,
     child: AnyElement,
@@ -58,7 +74,7 @@ impl IntoElement for Appearing {
 }
 
 impl Element for Appearing {
-    type RequestLayoutState = ();
+    type RequestLayoutState = AppearingMode;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -76,24 +92,41 @@ impl Element for Appearing {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let state = window.with_element_state(
-            global_id.expect("Appearing must have an id"),
-            |state: Option<AppearingState>, _| {
-                let state = state.unwrap_or_default();
-                (state, state)
-            },
-        );
         let progress = appear_progress(self.appeared_at, self.animate, Instant::now());
 
         let mut style = Style::default();
         style.size.width = relative(1.).into();
-        match state.natural_height {
-            None if progress > 0. => {}
+
+        // Fully revealed: there is nothing left to animate, so let the child take
+        // part in this frame's layout. Its natural height is then known
+        // immediately instead of arriving one frame late.
+        if progress >= 1. {
+            let child_layout = self.child.request_layout(window, cx);
+            return (
+                window.request_layout(style, Some(child_layout), cx),
+                AppearingMode::Full,
+            );
+        }
+
+        // Animating: the natural height is measured in `prepaint` and only
+        // available on the following frame, so this node stays a leaf whose
+        // height grows from zero toward the previously measured height.
+        let natural_height = window.with_element_state(
+            global_id.expect("Appearing must have an id"),
+            |state: Option<AppearingState>, _| {
+                let state = state.unwrap_or_default();
+                (state.natural_height, state)
+            },
+        );
+        match natural_height {
             None => style.size.height = gpui::px(0.).into(),
             Some(height) => style.size.height = (height * progress).into(),
         }
 
-        (window.request_layout(style, None, cx), ())
+        (
+            window.request_layout(style, None, cx),
+            AppearingMode::Animating,
+        )
     }
 
     fn prepaint(
@@ -101,32 +134,43 @@ impl Element for Appearing {
         global_id: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
+        mode: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let available = size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::MinContent,
-        );
-        let measured = self.child.layout_as_root(available, window, cx);
-        let now = Instant::now();
-        let changed = window.with_element_state(
-            global_id.expect("Appearing must have an id"),
-            |state: Option<AppearingState>, _| {
-                let mut state = state.unwrap_or_default();
-                let changed = state.natural_height != Some(measured.height);
-                state.natural_height = Some(measured.height);
-                (changed, state)
-            },
-        );
+        let full = matches!(mode, AppearingMode::Full);
 
-        if changed || appear_progress(self.appeared_at, self.animate, now) < 1. {
-            window.request_animation_frame();
+        if !full {
+            let available = size(
+                AvailableSpace::Definite(bounds.size.width),
+                AvailableSpace::MinContent,
+            );
+            let measured = self.child.layout_as_root(available, window, cx);
+            let now = Instant::now();
+            let changed = window.with_element_state(
+                global_id.expect("Appearing must have an id"),
+                |state: Option<AppearingState>, _| {
+                    let mut state = state.unwrap_or_default();
+                    let changed = state.natural_height != Some(measured.height);
+                    state.natural_height = Some(measured.height);
+                    (changed, state)
+                },
+            );
+
+            if changed || appear_progress(self.appeared_at, self.animate, now) < 1. {
+                window.request_animation_frame();
+            }
         }
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            self.child.prepaint_at(bounds.origin, window, cx);
+            if full {
+                // The child is a layout child of this node, so its bounds are
+                // already absolute. Prepainting at `bounds.origin` would apply
+                // the parent origin a second time.
+                self.child.prepaint(window, cx);
+            } else {
+                self.child.prepaint_at(bounds.origin, window, cx);
+            }
         });
     }
 
