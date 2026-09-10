@@ -8,7 +8,8 @@ use codex_app_server_protocol::{
     ThreadStatus, ToolRequestUserInputAnswer, ToolRequestUserInputQuestion,
     ToolRequestUserInputResponse, Turn, TurnPlanStep, TurnStatus, UserInput,
 };
-use gpui::{AppContext, Context, Entity, SharedString};
+use gpui::{AppContext, Context, Entity, Image, SharedString};
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 pub(crate) fn new_client_user_message_id() -> String {
@@ -22,6 +23,45 @@ pub(crate) fn single_line_title(title: &str) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[derive(Clone)]
+pub(crate) struct ComposerAttachment {
+    pub(crate) id: String,
+    pub(crate) name: SharedString,
+    kind: ComposerAttachmentKind,
+}
+
+#[derive(Clone)]
+enum ComposerAttachmentKind {
+    Image { path: PathBuf, preview: Arc<Image> },
+}
+
+impl ComposerAttachment {
+    pub(crate) fn image(name: SharedString, path: PathBuf, preview: Image) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            kind: ComposerAttachmentKind::Image {
+                path,
+                preview: Arc::new(preview),
+            },
+        }
+    }
+
+    pub(crate) fn preview(&self) -> Arc<Image> {
+        match &self.kind {
+            ComposerAttachmentKind::Image { preview, .. } => preview.clone(),
+        }
+    }
+
+    pub(crate) fn into_user_input(self) -> UserInput {
+        match self.kind {
+            ComposerAttachmentKind::Image { path, .. } => {
+                UserInput::LocalImage { path, detail: None }
+            }
+        }
+    }
 }
 
 pub struct WorkspaceState {
@@ -379,6 +419,7 @@ pub struct ChatState {
     pub tool_progress: HashMap<String, Vec<SharedString>>,
     pub settings: ChatSettings,
     pub draft: String,
+    pub(crate) draft_attachments: Vec<ComposerAttachment>,
     pub editing_message: Option<EditingMessage>,
     pub active_turn: Option<ActiveTurn>,
     pub is_loading: bool,
@@ -426,6 +467,7 @@ impl ChatState {
             tool_progress: HashMap::new(),
             settings: ChatSettings::default(),
             draft: String::new(),
+            draft_attachments: Vec::new(),
             editing_message: None,
             active_turn: None,
             is_loading: false,
@@ -467,6 +509,7 @@ impl ChatState {
             tool_progress: HashMap::new(),
             settings,
             draft: String::new(),
+            draft_attachments: Vec::new(),
             editing_message: None,
             active_turn,
             is_loading: false,
@@ -727,15 +770,22 @@ impl ChatState {
     }
 
     pub fn begin_user_message(&mut self, client_id: String, text: String) -> bool {
+        self.begin_user_message_input(
+            client_id,
+            vec![UserInput::Text {
+                text,
+                text_elements: Vec::new(),
+            }],
+        )
+    }
+
+    pub fn begin_user_message_input(&mut self, client_id: String, content: Vec<UserInput>) -> bool {
         if self.user_message_is_sending() {
             return false;
         }
         self.pending_user_message = Some(PendingUserMessage {
             client_id: client_id.clone(),
-            content: vec![UserInput::Text {
-                text,
-                text_elements: Vec::new(),
-            }],
+            content,
             delivery: PendingUserMessageDelivery::Sending,
         });
         self.mark_transcript_layout(TranscriptLayoutTarget::PendingUser(client_id));
@@ -746,18 +796,9 @@ impl ChatState {
         self.pending_user_message.as_ref()
     }
 
-    pub fn pending_user_message_request(&self) -> Option<(String, String)> {
+    pub fn pending_user_message_request(&self) -> Option<(String, Vec<UserInput>)> {
         let message = self.pending_user_message.as_ref()?;
-        let text = message
-            .content
-            .iter()
-            .filter_map(|input| match input {
-                UserInput::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        Some((message.client_id.clone(), text))
+        Some((message.client_id.clone(), message.content.clone()))
     }
 
     pub fn user_message_is_sending(&self) -> bool {
@@ -1226,6 +1267,7 @@ pub struct WindowState {
     pub new_chat_open: bool,
     pub new_chat_projectless: bool,
     pub new_chat_draft: String,
+    pub(crate) new_chat_draft_attachments: Vec<ComposerAttachment>,
 }
 
 impl WindowState {
@@ -1235,6 +1277,7 @@ impl WindowState {
             new_chat_open: true,
             new_chat_projectless: false,
             new_chat_draft: String::new(),
+            new_chat_draft_attachments: Vec::new(),
         }
     }
 

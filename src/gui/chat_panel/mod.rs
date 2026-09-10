@@ -1,3 +1,4 @@
+mod attachments;
 mod composer;
 mod composer_view;
 mod new_chat;

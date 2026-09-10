@@ -1,17 +1,66 @@
-use crate::gui::{ApprovalsReviewer, approvals_reviewer_label};
-use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
+use crate::gui::{ApprovalsReviewer, ComposerAttachment, approvals_reviewer_label};
+use gpui::{Context, IntoElement, ObjectFit, ParentElement, Styled, div, img, prelude::*, px};
 use gpui_component::{
     ActiveTheme as _, IconName, Side, Sizable as _, box_shadow,
     button::{Button, ButtonVariants as _},
     input::Textarea,
     menu::{DropdownMenu as _, PopupMenuItem},
+    scroll::ScrollableElement,
 };
 
 use super::ChatPanel;
 
 impl ChatPanel {
+    fn composer_attachment_strip(
+        &self,
+        attachments: Vec<ComposerAttachment>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .w_full()
+            .min_w_0()
+            .h(px(82.))
+            .px_2()
+            .flex()
+            .items_center()
+            .gap_2()
+            .overflow_x_scrollbar()
+            .children(attachments.into_iter().map(|attachment| {
+                let attachment_id = attachment.id.clone();
+                let attachment_name = attachment.name.clone();
+                div()
+                    .relative()
+                    .size(px(72.))
+                    .flex_shrink_0()
+                    .overflow_hidden()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().muted)
+                    .child(
+                        img(attachment.preview())
+                            .size_full()
+                            .object_fit(ObjectFit::Cover),
+                    )
+                    .child(
+                        div().absolute().top_1().right_1().child(
+                            Button::new(format!("remove-composer-attachment-{attachment_id}"))
+                                .xsmall()
+                                .ghost()
+                                .rounded(px(999.))
+                                .icon(IconName::Close)
+                                .tooltip(format!("Remove {attachment_name}"))
+                                .on_click(cx.listener(move |view, _, _, cx| {
+                                    view.remove_composer_attachment(&attachment_id, cx);
+                                })),
+                        ),
+                    )
+            }))
+    }
+
     pub(super) fn composer_surface(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let settings_chat = self.composer_chat();
+        let attachments = self.composer_attachments(cx);
         let (default_settings, models, permission_profiles) = {
             let state = self.state.read(cx);
             (
@@ -53,6 +102,7 @@ impl ChatPanel {
         let user_message_sending = self.user_message_sending(cx);
 
         div()
+            .capture_action(cx.listener(Self::paste_into_composer))
             .w_full()
             .max_w(px(1000.))
             .rounded_3xl()
@@ -70,6 +120,9 @@ impl ChatPanel {
             .flex()
             .flex_col()
             .gap_2()
+            .when(!attachments.is_empty(), |surface| {
+                surface.child(self.composer_attachment_strip(attachments, cx))
+            })
             .child(
                 Textarea::new(&self.composer_input)
                     .appearance(false)

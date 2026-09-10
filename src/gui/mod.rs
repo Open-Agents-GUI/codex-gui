@@ -16,4 +16,6 @@ pub use state::{
     PendingApprovalKind, PendingUserInputRequest, PermissionMode, PermissionProfileOption,
     ProjectState, WindowState, WorkspaceState, approvals_reviewer_label, permission_profile_label,
 };
-pub(crate) use state::{PendingUserMessageDelivery, new_client_user_message_id, single_line_title};
+pub(crate) use state::{
+    ComposerAttachment, PendingUserMessageDelivery, new_client_user_message_id, single_line_title,
+};

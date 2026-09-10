@@ -405,7 +405,7 @@ impl AppServerBridge {
         &self,
         thread_id: String,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
         settings: ChatSettings,
     ) -> BridgeResult<TurnStartResponse> {
         self.request(|request_id| ClientRequest::TurnStart {
@@ -413,10 +413,7 @@ impl AppServerBridge {
             params: TurnStartParams {
                 thread_id,
                 client_user_message_id: Some(client_user_message_id),
-                input: vec![UserInput::Text {
-                    text,
-                    text_elements: Vec::new(),
-                }],
+                input,
                 responsesapi_client_metadata: None,
                 additional_context: None,
                 environments: None,
@@ -444,17 +441,14 @@ impl AppServerBridge {
         thread_id: String,
         turn_id: String,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
     ) -> BridgeResult<TurnSteerResponse> {
         self.request(|request_id| ClientRequest::TurnSteer {
             request_id,
             params: TurnSteerParams {
                 thread_id,
                 client_user_message_id: Some(client_user_message_id),
-                input: vec![UserInput::Text {
-                    text,
-                    text_elements: Vec::new(),
-                }],
+                input,
                 responsesapi_client_metadata: None,
                 additional_context: None,
                 expected_turn_id: turn_id,

@@ -152,6 +152,15 @@ fn html_attr(value: &str, name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::gui::chat_history::blocks::UserMessageDelivery;
+    use codex_app_server_protocol::UserInput;
+
+    fn user_content(text: &str) -> Arc<[UserInput]> {
+        vec![UserInput::Text {
+            text: text.to_string(),
+            text_elements: Vec::new(),
+        }]
+        .into()
+    }
 
     #[test]
     fn streaming_markdown_is_a_strict_source_append() {
@@ -160,7 +169,7 @@ mod tests {
             key: "user-1".into(),
             turn_id: Some("turn-1".into()),
             previous_turn_id: None,
-            body: "hello".into(),
+            content: user_content("hello"),
             delivery: UserMessageDelivery::Sent,
         });
         before.push_markdown("A partial reply");
@@ -170,7 +179,7 @@ mod tests {
             key: "user-1".into(),
             turn_id: Some("turn-1".into()),
             previous_turn_id: None,
-            body: "hello".into(),
+            content: user_content("hello"),
             delivery: UserMessageDelivery::Sent,
         });
         after.push_markdown("A partial reply with another chunk");
@@ -188,7 +197,7 @@ mod tests {
             key: "client-user-1".into(),
             turn_id: None,
             previous_turn_id: None,
-            body: "hello".into(),
+            content: user_content("hello"),
             delivery: UserMessageDelivery::Sending,
         });
 
@@ -197,7 +206,7 @@ mod tests {
             key: "client-user-1".into(),
             turn_id: Some("turn-1".into()),
             previous_turn_id: None,
-            body: "hello".into(),
+            content: user_content("hello"),
             delivery: UserMessageDelivery::Sent,
         });
 

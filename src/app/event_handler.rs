@@ -677,7 +677,7 @@ impl CodexGui {
         }
 
         tracing::info!(thread_id, "pending thread ready");
-        if let Some((client_user_message_id, text)) =
+        if let Some((client_user_message_id, input)) =
             pending_chat.read(cx).pending_user_message_request()
         {
             let settings = pending_chat.read(cx).settings.clone();
@@ -687,7 +687,7 @@ impl CodexGui {
                     .send_turn(
                         thread_id.clone(),
                         client_user_message_id.clone(),
-                        text,
+                        input,
                         settings,
                     )
                     .await

@@ -7,7 +7,7 @@ use super::{
 use crate::gui::{ApprovalsReviewer, ChatState, ProjectState, single_line_title};
 use anyhow::{Context as _, Result, anyhow};
 use chrono::Local;
-use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::{RequestId, UserInput};
 use gpui::{AppContext, Context};
 use std::{fs, io::ErrorKind, path::PathBuf};
 use uuid::Uuid;
@@ -170,13 +170,13 @@ impl CodexGui {
         .detach();
     }
 
-    pub(crate) fn submit_edited_turn_text(
+    pub(crate) fn submit_edited_turn_input(
         &mut self,
         source_chat: gpui::Entity<ChatState>,
         turn_id: String,
         previous_turn_id: Option<String>,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
         cx: &mut Context<Self>,
     ) {
         if source_chat.read(cx).active_turn.is_some() {
@@ -228,8 +228,10 @@ impl CodexGui {
             let pending_started = this
                 .update(cx, |_view, cx| {
                     replacement_chat.update(cx, |chat, cx| {
-                        let started =
-                            chat.begin_user_message(client_user_message_id.clone(), text.clone());
+                        let started = chat.begin_user_message_input(
+                            client_user_message_id.clone(),
+                            input.clone(),
+                        );
                         if started {
                             cx.notify();
                         }
@@ -263,7 +265,7 @@ impl CodexGui {
                 .send_turn(
                     replacement_thread_id.clone(),
                     client_user_message_id.clone(),
-                    text,
+                    input,
                     settings,
                 )
                 .await
@@ -283,7 +285,7 @@ impl CodexGui {
 
     /// Starts an empty thread for the active project.
     ///
-    /// Composer submission normally goes through `submit_turn_text` so the first
+    /// Composer submission normally goes through `submit_turn_input` so the first
     /// prompt can be sent after the asynchronous thread creation completes.
     fn start_new_thread(
         &mut self,
@@ -311,10 +313,10 @@ impl CodexGui {
         .detach();
     }
 
-    pub(crate) fn submit_new_turn_text(
+    pub(crate) fn submit_new_turn_input(
         &mut self,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
         cx: &mut Context<Self>,
     ) {
         let project = self.active_project_entity(cx);
@@ -338,7 +340,7 @@ impl CodexGui {
                 .path
                 .to_string()
         };
-        let title = single_line_title(&text);
+        let title = user_input_title(&input);
         let pending_chat_id = format!("pending-{client_user_message_id}");
         let settings = self.state.read(cx).new_chat_settings.clone();
         let pending_chat = cx.new(|_| {
@@ -350,7 +352,7 @@ impl CodexGui {
             );
             chat.settings = settings;
             chat.is_creating = true;
-            chat.begin_user_message(client_user_message_id, text);
+            chat.begin_user_message_input(client_user_message_id, input);
             chat
         });
         if projectless {
@@ -377,17 +379,18 @@ impl CodexGui {
         }
         self.window_state.update(cx, |state, cx| {
             state.new_chat_draft.clear();
+            state.new_chat_draft_attachments.clear();
             state.close_new_chat();
             cx.notify();
         });
         self.start_new_thread(pending_chat, project, projectless, cwd, cx);
     }
 
-    pub(crate) fn submit_turn_text(
+    pub(crate) fn submit_turn_input(
         &mut self,
         chat: gpui::Entity<ChatState>,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
         cx: &mut Context<Self>,
     ) {
         if chat.read(cx).thread.is_none() {
@@ -398,7 +401,8 @@ impl CodexGui {
         }
         let thread_id = chat.read(cx).id.clone();
         let pending_started = chat.update(cx, |chat, cx| {
-            let started = chat.begin_user_message(client_user_message_id.clone(), text.clone());
+            let started =
+                chat.begin_user_message_input(client_user_message_id.clone(), input.clone());
             if started {
                 cx.notify();
             }
@@ -415,7 +419,7 @@ impl CodexGui {
                 .send_turn(
                     thread_id.clone(),
                     client_user_message_id.clone(),
-                    text,
+                    input,
                     settings,
                 )
                 .await
@@ -433,12 +437,12 @@ impl CodexGui {
         .detach();
     }
 
-    pub(crate) fn steer_turn_text(
+    pub(crate) fn steer_turn_input(
         &mut self,
         chat: gpui::Entity<ChatState>,
         turn_id: String,
         client_user_message_id: String,
-        text: String,
+        input: Vec<UserInput>,
         cx: &mut Context<Self>,
     ) {
         if chat.read(cx).active_turn_id() != Some(turn_id.as_str()) {
@@ -449,7 +453,8 @@ impl CodexGui {
         }
         let active_thread_id = chat.read(cx).id.clone();
         let pending_started = chat.update(cx, |chat, cx| {
-            let started = chat.begin_user_message(client_user_message_id.clone(), text.clone());
+            let started =
+                chat.begin_user_message_input(client_user_message_id.clone(), input.clone());
             if started {
                 cx.notify();
             }
@@ -466,7 +471,7 @@ impl CodexGui {
                     active_thread_id.clone(),
                     turn_id,
                     client_user_message_id.clone(),
-                    text,
+                    input,
                 )
                 .await
                 .map(|_| ());
@@ -757,6 +762,30 @@ impl CodexGui {
         })
         .detach();
     }
+}
+
+fn user_input_title(input: &[UserInput]) -> String {
+    input
+        .iter()
+        .find_map(|input| match input {
+            UserInput::Text { text, .. } if !text.trim().is_empty() => {
+                Some(single_line_title(text))
+            }
+            _ => None,
+        })
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| {
+            if input.iter().any(|input| {
+                matches!(
+                    input,
+                    UserInput::LocalImage { .. } | UserInput::Image { .. }
+                )
+            }) {
+                "Image".into()
+            } else {
+                "Attachment".into()
+            }
+        })
 }
 
 fn new_projectless_chat_directory() -> Result<String> {

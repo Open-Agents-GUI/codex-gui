@@ -1,6 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
-use codex_app_server_protocol::{ThreadItem, Turn, TurnPlanStepStatus, TurnStatus, UserInput};
+use codex_app_server_protocol::{ThreadItem, Turn, TurnPlanStepStatus, TurnStatus};
 use codex_protocol::models::MessagePhase;
 use gpui::WeakEntity;
 
@@ -68,8 +68,7 @@ pub(super) fn build_transcript(
     }
 
     if let Some(message) = chat.pending_user_message() {
-        let body = user_input_text(&message.content);
-        if !body.is_empty() {
+        if !message.content.is_empty() {
             let delivery = match &message.delivery {
                 PendingUserMessageDelivery::Sending => UserMessageDelivery::Sending,
                 PendingUserMessageDelivery::Failed(_) => UserMessageDelivery::Failed,
@@ -78,7 +77,7 @@ pub(super) fn build_transcript(
                 key: message.client_id.clone(),
                 turn_id: None,
                 previous_turn_id: None,
-                body: body.into(),
+                content: message.content.as_slice().into(),
                 delivery,
             });
             transcript.map_layout_target(
@@ -202,13 +201,12 @@ fn append_items(
                 client_id,
                 content,
             } => {
-                let body = user_input_text(content);
-                if !body.is_empty() {
+                if !content.is_empty() {
                     transcript.push_block(HistoryBlock::User {
                         key: client_id.clone().unwrap_or_else(|| id.clone()),
                         turn_id: Some(turn_id.to_string()),
                         previous_turn_id: previous_turn_id.map(str::to_string),
-                        body: body.into(),
+                        content: content.as_slice().into(),
                         delivery: UserMessageDelivery::Sent,
                     });
                     transcript.map_layout_target(
@@ -534,24 +532,6 @@ fn turn_duration(turn: &Turn) -> Duration {
 
 fn is_final_answer(phase: Option<&MessagePhase>) -> bool {
     matches!(phase, Some(MessagePhase::FinalAnswer) | None)
-}
-
-fn user_input_text(content: &[UserInput]) -> String {
-    content
-        .iter()
-        .map(|input| match input {
-            UserInput::Text { text, .. } => text.clone(),
-            UserInput::Image { url, .. } => format!("[Image: {url}]"),
-            UserInput::LocalImage { path, .. } => format!("[Image: {}]", path.display()),
-            UserInput::Audio { url } => format!("[Audio: {url}]"),
-            UserInput::LocalAudio { path } => format!("[Audio: {}]", path.display()),
-            UserInput::Skill { name, path } => {
-                format!("[Skill: {name} ({})]", path.display())
-            }
-            UserInput::Mention { name, path } => format!("[Mention: {name} ({path})]"),
-        })
-        .collect::<Vec<String>>()
-        .join("\n")
 }
 
 #[cfg(test)]

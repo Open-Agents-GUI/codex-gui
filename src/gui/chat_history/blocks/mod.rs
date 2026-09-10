@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+use codex_app_server_protocol::UserInput;
 use gpui::{AnyElement, App, IntoElement, SharedString, WeakEntity, Window};
 use gpui::{InteractiveElement as _, StatefulInteractiveElement as _};
 use gpui_component::ActiveTheme as _;
@@ -64,7 +65,7 @@ pub(super) enum HistoryBlock {
         key: String,
         turn_id: Option<String>,
         previous_turn_id: Option<String>,
-        body: SharedString,
+        content: Arc<[UserInput]>,
         delivery: UserMessageDelivery,
     },
     AssistantHeader {
@@ -148,12 +149,11 @@ pub(super) fn render(
             key,
             turn_id,
             previous_turn_id,
-            body,
+            content,
             delivery,
         } => {
             let edit_history = history.clone();
             let edit_turn_id = turn_id.clone();
-            let edit_body = body.clone();
             let animation = history
                 .read_with(cx, |history, _| history.send_animation_launch(&key))
                 .unwrap_or(None);
@@ -161,7 +161,7 @@ pub(super) fn render(
             let completion_key = key.clone();
             messages::render_user(
                 &key,
-                body,
+                content,
                 delivery,
                 turn_id.is_some(),
                 animation,
@@ -171,13 +171,12 @@ pub(super) fn render(
                         history.finish_send_animation(&completion_key, cx)
                     });
                 },
-                move |_, _, cx| {
+                move |body, _, _, cx| {
                     cx.stop_propagation();
                     let Some(turn_id) = edit_turn_id.clone() else {
                         return;
                     };
                     let previous_turn_id = previous_turn_id.clone();
-                    let body = edit_body.to_string();
                     let _ = edit_history.update(cx, |history, cx| {
                         history.edit_user_message(turn_id, previous_turn_id, body, cx)
                     });
