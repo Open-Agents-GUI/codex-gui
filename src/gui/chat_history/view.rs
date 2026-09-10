@@ -6,8 +6,8 @@ use std::{
 
 use codex_app_server_protocol::RequestId;
 use gpui::{
-    Bounds, Context, Entity, EventEmitter, FollowMode, IntoElement, ParentElement, Pixels, Render,
-    Styled, Subscription, Window, div, prelude::*, px,
+    Bounds, Context, Entity, EventEmitter, FollowMode, FollowTailReengagement, IntoElement,
+    ParentElement, Pixels, Render, Styled, Subscription, Window, div, prelude::*, px,
 };
 use gpui_component::{
     ActiveTheme as _,
@@ -432,6 +432,7 @@ fn new_transcript(cx: &mut Context<ChatHistory>) -> Entity<TextViewState> {
     cx.new(|cx| {
         let mut state = TextViewState::markdown("", cx);
         state.set_follow_mode(FollowMode::Tail, cx);
+        state.set_follow_tail_reengagement(FollowTailReengagement::ContentEnd, cx);
         state.set_append_fade_duration(Some(Duration::from_millis(200)), cx);
         state
     })
