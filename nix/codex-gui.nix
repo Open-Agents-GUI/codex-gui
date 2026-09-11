@@ -87,10 +87,10 @@ let
       );
     NIX_LDFLAGS = lib.optionalString pkgs.stdenv.isLinux "-rpath ${lib.makeLibraryPath linuxRuntimeLibs}";
     postInstall = ''
-      # Both executables are runtime components and must remain in the
-      # same directory in every package format.
+      # Runtime executables must remain available from the package output.
       test -x "$out/bin/codex-gui"
       test -x "$out/bin/codex-code-mode-host"
+      test -x "$out/bin/dsh-gui"
 
       install -Dm644 \
         ${desktopItem}/share/applications/codex-gui.desktop \

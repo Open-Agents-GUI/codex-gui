@@ -117,7 +117,7 @@ impl RenderOnce for ToolFrame {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().truncate().child(self.title))
+                    .child(div().child(self.title))
                     .when_some(self.detail, |this, (detail, scrollable)| {
                         let detail = div()
                             .id("tool-detail")

@@ -130,6 +130,7 @@ fn append_turn(
     expanded_turns: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
 ) {
+    let turn_is_active = matches!(turn.status, TurnStatus::InProgress);
     let Some(fold) = completed_turn_fold(turn) else {
         append_items(
             transcript,
@@ -138,6 +139,7 @@ fn append_turn(
             &turn.id,
             previous_turn_id,
             &turn.items,
+            turn_is_active,
             expanded_tool_groups,
         );
         return;
@@ -150,6 +152,7 @@ fn append_turn(
         &turn.id,
         previous_turn_id,
         &turn.items[..=fold.user_index],
+        turn_is_active,
         expanded_tool_groups,
     );
 
@@ -168,6 +171,7 @@ fn append_turn(
             &turn.id,
             previous_turn_id,
             &turn.items[fold.user_index + 1..],
+            turn_is_active,
             expanded_tool_groups,
         );
     } else if let Some(final_answer) = turn.items.get(fold.final_index) {
@@ -191,6 +195,7 @@ fn append_items(
     turn_id: &str,
     previous_turn_id: Option<&str>,
     items: &[ThreadItem],
+    turn_is_active: bool,
     expanded_tool_groups: &HashSet<String>,
 ) {
     let mut index = 0;
@@ -229,7 +234,7 @@ fn append_items(
                     turn_id,
                     &items[index],
                     &tools,
-                    tool_group_is_tail(items, index + 1, tools_end),
+                    tool_group_is_tail(items, index + 1, tools_end, turn_is_active),
                     expanded_tool_groups,
                 );
                 index = tools_end;
@@ -331,7 +336,7 @@ fn append_items(
                     chat_source,
                     item.id(),
                     &tools,
-                    tool_group_is_tail(items, index, tools_end),
+                    tool_group_is_tail(items, index, tools_end, turn_is_active),
                     expanded_tool_groups,
                 );
                 index = tools_end;
@@ -442,8 +447,13 @@ fn tool_group_end(items: &[ThreadItem], start: usize) -> usize {
     end
 }
 
-fn tool_group_is_tail(items: &[ThreadItem], start: usize, end: usize) -> bool {
-    start < end && end == items.len()
+fn tool_group_is_tail(
+    items: &[ThreadItem],
+    start: usize,
+    end: usize,
+    turn_is_active: bool,
+) -> bool {
+    turn_is_active && start < end && end == items.len()
 }
 
 fn is_tool_group_item(item: &ThreadItem) -> bool {

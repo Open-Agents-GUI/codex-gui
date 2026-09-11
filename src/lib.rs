@@ -5,7 +5,7 @@ pub mod gui;
 mod workspace;
 
 use app::CodexGui;
-use bridge::start_app_server_bridge;
+use bridge::{start_app_server_bridge, start_dsh_app_server_bridge};
 use codex_arg0::Arg0DispatchPaths;
 use gpui::{
     App, AppContext as _, Bounds, Styled as _, TitlebarOptions, WindowBackgroundAppearance,
@@ -14,6 +14,8 @@ use gpui::{
 use gpui_component::{Root, Theme};
 use gpui_component_assets::Assets;
 use gpui_platform::application;
+
+pub use bridge::DshLaunchConfig;
 
 #[cfg(not(target_family = "wasm"))]
 pub fn init_tracing() {
@@ -25,10 +27,25 @@ pub fn init_tracing() {
 }
 
 pub fn run_app(runtime: tokio::runtime::Handle, arg0_paths: Arg0DispatchPaths) {
+    let bridge = start_app_server_bridge(runtime, arg0_paths);
+    run_with_bridge(bridge, "codex-gui");
+}
+
+pub fn run_dsh_app(runtime: tokio::runtime::Handle, launch: DshLaunchConfig) {
+    let bridge = start_dsh_app_server_bridge(runtime, launch);
+    run_with_bridge(bridge, "dsh-gui");
+}
+
+fn run_with_bridge(
+    (bridge, bridge_rx): (
+        bridge::AppServerBridge,
+        tokio::sync::mpsc::UnboundedReceiver<bridge::BridgeEvent>,
+    ),
+    window_title: &'static str,
+) {
     application().with_assets(Assets).run(move |cx: &mut App| {
         gpui_component::init(cx);
         Theme::sync_system_appearance(None, cx);
-        let (bridge, bridge_rx) = start_app_server_bridge(runtime, arg0_paths);
 
         let bounds = Bounds::centered(None, size(px(1180.), px(760.)), cx);
         cx.open_window(
@@ -43,7 +60,7 @@ pub fn run_app(runtime: tokio::runtime::Handle, arg0_paths: Arg0DispatchPaths) {
                 ..Default::default()
             },
             move |window, cx| {
-                window.set_window_title("codex-gui");
+                window.set_window_title(window_title);
                 let view = cx.new(|cx| CodexGui::new(bridge, bridge_rx, window, cx));
                 cx.new(|cx| Root::new(view, window, cx).bg(transparent_black()))
             },

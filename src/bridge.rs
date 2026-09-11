@@ -1,3 +1,5 @@
+mod dsh_transport;
+
 use crate::gui::{
     ChatSettings, ModelOption, PermissionMode, PermissionProfileOption, permission_profile_label,
 };
@@ -33,6 +35,9 @@ use tokio::{
     sync::{mpsc, oneshot, watch},
 };
 
+pub use dsh_transport::DshLaunchConfig;
+use dsh_transport::{StdioRequestHandle, run_dsh_app_server};
+
 #[derive(Clone)]
 pub struct AppServerBridge {
     inner: Arc<BridgeInner>,
@@ -67,9 +72,30 @@ impl Drop for BridgeInner {
 #[derive(Clone)]
 enum ClientState {
     Starting,
-    Ready(InProcessAppServerRequestHandle),
+    Ready(BridgeRequestHandle),
     Failed(String),
     Stopped,
+}
+
+#[derive(Clone)]
+enum BridgeRequestHandle {
+    InProcess(InProcessAppServerRequestHandle),
+    Stdio(StdioRequestHandle),
+}
+
+impl BridgeRequestHandle {
+    async fn request_typed<T>(&self, request: ClientRequest) -> BridgeResult<T>
+    where
+        T: DeserializeOwned + Send + 'static,
+    {
+        match self {
+            Self::InProcess(client) => client
+                .request_typed(request)
+                .await
+                .map_err(BridgeError::from),
+            Self::Stdio(client) => client.request_typed(request).await,
+        }
+    }
 }
 
 pub enum BridgeEvent {
@@ -117,6 +143,35 @@ pub fn start_app_server_bridge(
     let (server_response_tx, server_response_rx) = mpsc::unbounded_channel();
     runtime.spawn(run_embedded_app_server(
         arg0_paths,
+        client_state_tx,
+        shutdown_rx,
+        event_tx,
+        server_response_rx,
+    ));
+
+    (
+        AppServerBridge {
+            inner: Arc::new(BridgeInner {
+                client_state: client_state_rx,
+                shutdown_tx,
+                next_request_id: AtomicI64::new(1),
+                server_response_tx,
+            }),
+        },
+        event_rx,
+    )
+}
+
+pub fn start_dsh_app_server_bridge(
+    runtime: Handle,
+    launch: DshLaunchConfig,
+) -> (AppServerBridge, mpsc::UnboundedReceiver<BridgeEvent>) {
+    let (client_state_tx, client_state_rx) = watch::channel(ClientState::Starting);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let (server_response_tx, server_response_rx) = mpsc::unbounded_channel();
+    runtime.spawn(run_dsh_app_server(
+        launch,
         client_state_tx,
         shutdown_rx,
         event_tx,
@@ -497,13 +552,10 @@ impl AppServerBridge {
         let request_id =
             RequestId::Integer(self.inner.next_request_id.fetch_add(1, Ordering::Relaxed));
         let request = build(request_id);
-        client
-            .request_typed(request)
-            .await
-            .map_err(BridgeError::from)
+        client.request_typed(request).await
     }
 
-    async fn request_handle(&self) -> BridgeResult<InProcessAppServerRequestHandle> {
+    async fn request_handle(&self) -> BridgeResult<BridgeRequestHandle> {
         let mut state = self.inner.client_state.clone();
         loop {
             let snapshot = state.borrow().clone();
@@ -547,7 +599,9 @@ async fn run_embedded_app_server(
         }
     };
 
-    client_state.send_replace(ClientState::Ready(client.request_handle()));
+    client_state.send_replace(ClientState::Ready(BridgeRequestHandle::InProcess(
+        client.request_handle(),
+    )));
     loop {
         tokio::select! {
             changed = shutdown.changed() => {

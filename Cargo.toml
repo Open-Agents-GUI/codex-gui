@@ -9,6 +9,10 @@ name = "codex-code-mode-host"
 path = "src/bin/codex_code_mode_host.rs"
 
 [[bin]]
+name = "dsh-gui"
+path = "src/bin/dsh_gui.rs"
+
+[[bin]]
 name = "tool-render-gallery"
 path = "src/bin/tool_render_gallery.rs"
 
@@ -37,7 +41,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }

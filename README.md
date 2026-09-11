@@ -29,6 +29,19 @@ The local code-mode host keeps Codex's upstream transport and session protocol,
 but executes JavaScript with the patched QuickJS runtime in
 `crates/codex-code-mode-runtime-quickjs`.
 
+To run the same GUI against the Codex-compatible app-server in a DeepSeek
+Harness source checkout:
+
+```sh
+cargo run --bin dsh-gui -- \
+  --dsh-repo /path/to/deepseek-harness \
+  --profile app-server
+```
+
+Without `--dsh-repo`, `dsh-gui` launches `dsh --profile app-server` from
+`PATH`. The GUI continues to use the pinned Codex protocol types; the dsh
+process owns model, permission, session, and configuration compatibility.
+
 ## Packaging
 
 The flake is the canonical package definition for Linux and macOS. It also
