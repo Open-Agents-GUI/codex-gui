@@ -117,16 +117,7 @@ impl RenderOnce for ToolFrame {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .whitespace_nowrap()
-                            .line_height(px(20.))
-                            .font_medium()
-                            .text_color(theme.foreground)
-                            .child(self.title),
-                    )
+                    .child(div().truncate().child(self.title))
                     .when_some(self.detail, |this, (detail, scrollable)| {
                         let detail = div()
                             .id("tool-detail")
@@ -137,7 +128,7 @@ impl RenderOnce for ToolFrame {
                             .border_color(theme.border.opacity(0.7))
                             .bg(theme.background.opacity(0.58))
                             .px_2()
-                            .py_1p5()
+                            // .py_1p5()
                             .font_family(theme.mono_font_family.clone())
                             .text_xs()
                             .line_height(px(18.))
