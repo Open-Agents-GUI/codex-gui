@@ -11,7 +11,7 @@ pub(super) fn render(body: SharedString, running: bool, theme: &Theme) -> impl I
             .border_color(theme.border)
             .bg(theme.muted.opacity(0.45))
             .px_4()
-            .py_3()
+            .pt_3()
             .flex()
             .flex_col()
             .gap_1()

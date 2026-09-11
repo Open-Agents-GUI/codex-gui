@@ -3,6 +3,7 @@ mod command;
 mod file_change;
 mod gallery;
 mod media;
+mod reasoning;
 mod remote;
 mod simple;
 mod sleep;
@@ -25,8 +26,9 @@ use collaboration::CollaborationTool;
 use command::CommandTool;
 use file_change::FileChangeTool;
 use media::{ImageGenerationTool, ImageViewTool};
+use reasoning::ReasoningTool;
 use remote::{DynamicTool, McpTool};
-use simple::{SimpleTool, SimpleToolElement, ToolStatus};
+use simple::{SimpleTool as _, SimpleToolElement, ToolStatus};
 use sleep::SleepTool;
 use web_search::WebSearchTool;
 
@@ -270,61 +272,6 @@ pub(in crate::gui::chat_history) fn tool_calls(
             )
         })
         .collect()
-}
-
-#[derive(Clone)]
-pub(in crate::gui::chat_history) struct ReasoningTool {
-    title: SharedString,
-    detail: Option<SharedString>,
-    status: ToolStatus,
-}
-
-impl ReasoningTool {
-    fn new(summary: &[String], content: &[String], status: ToolStatus) -> Self {
-        let body = summary
-            .iter()
-            .chain(content)
-            .filter(|part| !part.is_empty())
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join("\n\n")
-            .replace("**", "");
-        let last_line = body
-            .lines()
-            .rev()
-            .map(str::trim)
-            .find(|line| !line.is_empty());
-        Self {
-            title: last_line
-                .map(|line| format!("Reasoning: {line}"))
-                .unwrap_or_else(|| "Reasoning".to_string())
-                .into(),
-            detail: (!body.is_empty()).then(|| body.into()),
-            status,
-        }
-    }
-
-    fn status(&self) -> ToolStatus {
-        self.status
-    }
-}
-
-impl SimpleTool for ReasoningTool {
-    fn icon(&self) -> IconName {
-        IconName::Bot
-    }
-
-    fn title(&self) -> SharedString {
-        self.title.clone()
-    }
-
-    fn detail(&self) -> Option<SharedString> {
-        self.detail.clone()
-    }
-
-    fn status(&self) -> ToolStatus {
-        self.status
-    }
 }
 
 pub(in crate::gui::chat_history) fn is_tool_item(item: &ThreadItem) -> bool {
