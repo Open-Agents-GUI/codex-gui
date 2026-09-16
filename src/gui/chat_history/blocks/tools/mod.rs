@@ -2,6 +2,7 @@ mod collaboration;
 mod command;
 mod file_change;
 mod gallery;
+mod group;
 mod media;
 mod reasoning;
 mod remote;
@@ -15,11 +16,7 @@ use codex_app_server_protocol::{
     CollabAgentToolCallStatus, CommandExecutionStatus, DynamicToolCallStatus, McpToolCallStatus,
     PatchApplyStatus, ThreadItem,
 };
-use gpui::{
-    App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, WeakEntity, Window, div,
-    prelude::*,
-};
-use gpui_component::{Icon, IconName, Sizable as _, accordion::Accordion, h_flex, theme::Theme};
+use gpui::{App, IntoElement, RenderOnce, SharedString, WeakEntity, Window};
 
 use crate::gui::ChatState;
 use collaboration::CollaborationTool;
@@ -33,6 +30,7 @@ use sleep::SleepTool;
 use web_search::WebSearchTool;
 
 pub use gallery::ToolGallery;
+pub(super) use group::tool_group;
 
 #[derive(Clone, IntoElement)]
 pub(in crate::gui::chat_history) enum ToolCall {
@@ -118,141 +116,6 @@ impl RenderOnce for ToolCall {
             Self::ImageGeneration(tool) => tool.into_any_element(),
         }
     }
-}
-
-pub(super) fn render_group(
-    key: &str,
-    tools: &[ToolCall],
-    collapsible: bool,
-    tail: bool,
-    expanded: bool,
-    theme: &Theme,
-    on_toggle: impl Fn(&mut App) + Send + Sync + 'static,
-) -> gpui::Div {
-    if tools.is_empty() {
-        return div();
-    }
-
-    let can_toggle = collapsible && !tail;
-    let open = !can_toggle || expanded;
-    let title_style = gpui::StyleRefinement::default().px_3().py_2();
-    let content_style = gpui::StyleRefinement::default().px_2().pb_2();
-    let accordion = Accordion::new(format!("tool-group-{key}"))
-        .bordered(false)
-        .xsmall()
-        .w_full()
-        .min_w_0()
-        .border_1()
-        .border_color(theme.border.opacity(0.75))
-        .bg(theme.muted.opacity(0.35))
-        .rounded_lg()
-        .overflow_hidden()
-        .item(|item| {
-            item.open(open)
-                .disabled(!can_toggle)
-                .title(render_summary(tools, theme))
-                .title_style(title_style)
-                .content_style(content_style)
-                .hover(|style| style.bg(theme.accent.opacity(0.45)))
-                .bg(theme.transparent)
-                .child(render_list(tools, theme))
-        })
-        .when(can_toggle, |accordion| {
-            accordion.on_toggle_click(move |_, _, cx| on_toggle(cx))
-        });
-
-    div()
-        .w_full()
-        .min_w_0()
-        .overflow_x_hidden()
-        .py_2()
-        .child(accordion)
-}
-
-fn render_summary(tools: &[ToolCall], theme: &Theme) -> gpui::Div {
-    let tool_count = tools.iter().filter(|tool| !tool.is_reasoning()).count();
-    let running = tools
-        .iter()
-        .filter(|tool| !tool.is_reasoning())
-        .filter(|tool| matches!(tool.status(), ToolStatus::Running))
-        .count();
-    let failed = tools
-        .iter()
-        .filter(|tool| !tool.is_reasoning())
-        .filter(|tool| matches!(tool.status(), ToolStatus::Failed))
-        .count();
-    h_flex()
-        .min_w_0()
-        .items_center()
-        .gap_2()
-        .text_sm()
-        .child(
-            div()
-                .size_6()
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_md()
-                .bg(theme.accent.opacity(0.7))
-                .child(
-                    Icon::new(IconName::Asterisk)
-                        .xsmall()
-                        .text_color(theme.accent_foreground),
-                ),
-        )
-        .child(div().min_w_0().flex_1().truncate().child(if running > 0 {
-            format!(
-                "Running {tool_count} {}",
-                pluralize(tool_count, "tool call")
-            )
-        } else {
-            format!("Ran {tool_count} {}", pluralize(tool_count, "tool call"))
-        }))
-        .when(failed > 0, |summary| {
-            summary.child(
-                div()
-                    .flex_none()
-                    .rounded_full()
-                    .bg(theme.danger.opacity(0.12))
-                    .px_1p5()
-                    .py_0p5()
-                    .text_xs()
-                    .text_color(theme.danger)
-                    .child(format!("{failed} failed")),
-            )
-        })
-        .when(running > 0, |summary| {
-            summary.child(
-                div()
-                    .flex_none()
-                    .rounded_full()
-                    .bg(theme.warning.opacity(0.14))
-                    .px_1p5()
-                    .py_0p5()
-                    .text_xs()
-                    .text_color(theme.warning)
-                    .child(format!("{running} active")),
-            )
-        })
-}
-
-fn render_list(tools: &[ToolCall], theme: &Theme) -> gpui::Div {
-    div()
-        .w_full()
-        .min_w_0()
-        .flex()
-        .flex_col()
-        .items_stretch()
-        .children(tools.iter().cloned().enumerate().map(|(index, tool)| {
-            div()
-                .w_full()
-                .min_w_0()
-                .when(index > 0, |row| {
-                    row.border_t_1().border_color(theme.border.opacity(0.55))
-                })
-                .child(tool)
-        }))
 }
 
 pub(in crate::gui::chat_history) fn tool_calls(
@@ -353,8 +216,4 @@ fn tool_status(item: &ThreadItem, streaming: bool) -> ToolStatus {
         ThreadItem::ImageGeneration(_) => ToolStatus::Succeeded,
         _ => ToolStatus::Failed,
     }
-}
-
-fn pluralize(count: usize, singular: &'static str) -> &'static str {
-    if count == 1 { singular } else { "tool calls" }
 }

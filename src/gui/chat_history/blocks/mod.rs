@@ -141,7 +141,7 @@ impl HistoryBlock {
 pub(super) fn render(
     history: &WeakEntity<ChatHistory>,
     block: HistoryBlock,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     match block {
@@ -277,13 +277,14 @@ pub(super) fn render(
             let appeared_at = history
                 .read_with(cx, |history, _| history.block_appeared_at(&block_id))
                 .unwrap_or(None);
-            let content = tools::render_group(
+            let content = tools::tool_group(
                 &key,
-                &tools,
+                tools,
                 collapsible,
                 tail,
                 expanded,
-                cx.theme(),
+                window,
+                cx,
                 move |cx| {
                     let key = toggle_key.clone();
                     let _ = history.update(cx, |history, cx| history.toggle_tools(&key, cx));

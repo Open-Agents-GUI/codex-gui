@@ -588,7 +588,7 @@ mod tests {
         let items = vec![sleep_tool("tool-1")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
     }
 
     #[test]
@@ -596,7 +596,7 @@ mod tests {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
     }
 
     #[test]
@@ -604,7 +604,7 @@ mod tests {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
     }
 
     #[test]
@@ -615,7 +615,7 @@ mod tests {
         ];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
     }
 
     #[test]
@@ -627,7 +627,7 @@ mod tests {
         ];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end));
+        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
     }
 
     fn sleep_tool(id: &str) -> ThreadItem {
