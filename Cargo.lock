@@ -7451,7 +7451,6 @@ dependencies = [
 [[package]]
 name = "gpui-base"
 version = "0.5.2"
-source = "git+https://github.com/Open-Agents-GUI/gpui-kit.git?rev=2bb6ce244287f41c8a855aeb4a3fe4c185e26881#2bb6ce244287f41c8a855aeb4a3fe4c185e26881"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -7483,7 +7482,6 @@ dependencies = [
 [[package]]
 name = "gpui-component"
 version = "0.5.2"
-source = "git+https://github.com/Open-Agents-GUI/gpui-kit.git?rev=2bb6ce244287f41c8a855aeb4a3fe4c185e26881#2bb6ce244287f41c8a855aeb4a3fe4c185e26881"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7528,7 +7526,6 @@ dependencies = [
 [[package]]
 name = "gpui-component-assets"
 version = "0.5.1"
-source = "git+https://github.com/Open-Agents-GUI/gpui-kit.git?rev=2bb6ce244287f41c8a855aeb4a3fe4c185e26881#2bb6ce244287f41c8a855aeb4a3fe4c185e26881"
 dependencies = [
  "anyhow",
  "gpui",
@@ -7542,7 +7539,6 @@ dependencies = [
 [[package]]
 name = "gpui-component-macros"
 version = "0.5.1"
-source = "git+https://github.com/Open-Agents-GUI/gpui-kit.git?rev=2bb6ce244287f41c8a855aeb4a3fe4c185e26881#2bb6ce244287f41c8a855aeb4a3fe4c185e26881"
 dependencies = [
  "proc-macro2",
  "quote",

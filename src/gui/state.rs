@@ -10,6 +10,7 @@ use codex_app_server_protocol::{
 };
 use gpui::{AppContext, Context, Entity, Image, SharedString};
 use std::{path::PathBuf, sync::Arc};
+use tracing::debug;
 use uuid::Uuid;
 
 pub(crate) fn new_client_user_message_id() -> String {

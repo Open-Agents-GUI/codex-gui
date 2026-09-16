@@ -1,0 +1,437 @@
+2026-09-11T09:03:07.199156Z DEBUG codex_gui::app::event_handler: ReasoningTextDelta(ReasoningTextDeltaNotification { thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", item_id: "reasoning-6-2", delta: "'s", content_index: 0 })
+2026-09-11T09:03:07.204526Z DEBUG codex_gui::app::event_handler: ReasoningTextDelta(ReasoningTextDeltaNotification { thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", item_id: "reasoning-6-2", delta: " craft", content_index: 0 })
+2026-09-11T09:03:07.226582Z DEBUG codex_gui::app::event_handler: ReasoningTextDelta(ReasoningTextDeltaNotification { thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", item_id: "reasoning-6-2", delta: " final", content_index: 0 })
+2026-09-11T09:03:07.232415Z DEBUG codex_gui::app::event_handler: ReasoningTextDelta(ReasoningTextDeltaNotification { thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", item_id: "reasoning-6-2", delta: " answer", content_index: 0 })
+2026-09-11T09:03:07.237826Z DEBUG codex_gui::app::event_handler: ReasoningTextDelta(ReasoningTextDeltaNotification { thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", item_id: "reasoning-6-2", delta: ".", content_index: 0 })
+2026-09-11T09:03:07.263414Z DEBUG codex_gui::app::event_handler: ItemStarted(ItemStartedNotification { item: AgentMessage { id: "agent-6-2", text: "", phase: None, memory_citation: None }, thread_id: "session-bc57face-2a44-484e-a0ac-9f6a125d9b53", turn_id: "turn-6", started_at_ms: 1789117387262 })
+
+thread 'main' (5387094) panicked at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/text.rs:531:17:
+invalid text run. Text: '是直接按名字调用 minimal preset，没有在 app-server 里手动重写 minimal 的工具列表。', run: TextRun { len: 20, font: Font { family: ".SystemUIFont", features: FontFeatures, fallbacks: None, weight: FontWeight(700.0), style: Normal }, color: Hsla { h: 0.0, s: 0.0, l: 0.039, a: 1.0 }, background_color: None, underline: None, strikethrough: None }
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/panicking.rs:80:14
+   2: gpui::elements::text::StyledText::with_runs
+   3: <gpui_component::text::inline::Inline as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/gpui-kit-7f84e25bcfc42aa4/2bb6ce2/crates/ui/src/text/inline.rs:454:63
+   4: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+   5: gpui::element::AnyElement::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:609:16
+   6: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1844:48
+   7: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &mut F>::call_once
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:310:21
+   8: core::option::Option<T>::map
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/option.rs:1165:29
+   9: <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::next
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:107:26
+  10: <smallvec::SmallVec<A> as core::iter::traits::collect::Extend<<A as smallvec::Array>::Item>>::extend
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2121:41
+  11: <smallvec::SmallVec<A> as core::iter::traits::collect::FromIterator<<A as smallvec::Array>::Item>>::from_iter
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2105:11
+  12: core::iter::traits::iterator::Iterator::collect
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2092:9
+  13: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1845:30
+  14: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+  15: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1840:28
+  16: gpui::elements::div::Interactivity::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2185:33
+  17: gpui::window::Window::with_optional_element_state::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3799:39
+  18: gpui::window::Window::with_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3768:35
+  19: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3798:18
+  20: gpui::elements::div::Interactivity::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2124:16
+  21: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1834:32
+  22: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+  23: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1833:32
+  24: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+  25: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+  26: <gpui::elements::div::Div as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1819:5
+  27: <gpui::elements::div::Stateful<E> as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:3933:22
+  28: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+  29: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+  30: gpui::element::AnyElement::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:609:16
+  31: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1844:48
+  32: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &mut F>::call_once
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:310:21
+  33: core::option::Option<T>::map
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/option.rs:1165:29
+  34: <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::next
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:107:26
+  35: <smallvec::SmallVec<A> as core::iter::traits::collect::Extend<<A as smallvec::Array>::Item>>::extend
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2121:41
+  36: <smallvec::SmallVec<A> as core::iter::traits::collect::FromIterator<<A as smallvec::Array>::Item>>::from_iter
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2105:11
+  37: core::iter::traits::iterator::Iterator::collect
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2092:9
+  38: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1845:30
+  39: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+  40: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1840:28
+  41: gpui::elements::div::Interactivity::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2185:33
+  42: gpui::window::Window::with_optional_element_state::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3799:39
+  43: gpui::window::Window::with_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3756:35
+  44: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3798:18
+  45: gpui::elements::div::Interactivity::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2124:16
+  46: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1834:32
+  47: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+  48: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1833:32
+  49: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+  50: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+  51: <gpui::elements::div::Div as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1819:5
+  52: <gpui::elements::div::Stateful<E> as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:3933:22
+  53: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+  54: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+  55: gpui::element::AnyElement::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:609:16
+  56: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1844:48
+  57: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &mut F>::call_once
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:310:21
+  58: core::option::Option<T>::map
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/option.rs:1165:29
+  59: <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::next
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:107:26
+  60: <smallvec::SmallVec<A> as core::iter::traits::collect::Extend<<A as smallvec::Array>::Item>>::extend
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2121:41
+  61: <smallvec::SmallVec<A> as core::iter::traits::collect::FromIterator<<A as smallvec::Array>::Item>>::from_iter
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2105:11
+  62: core::iter::traits::iterator::Iterator::collect
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2092:9
+  63: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1845:30
+  64: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+  65: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1840:28
+  66: gpui::elements::div::Interactivity::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2185:33
+  67: gpui::window::Window::with_optional_element_state::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3799:39
+  68: gpui::window::Window::with_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3756:35
+  69: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3798:18
+  70: gpui::elements::div::Interactivity::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2124:16
+  71: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1834:32
+  72: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+  73: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1833:32
+  74: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+  75: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+  76: <gpui::elements::div::Div as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1819:5
+  77: <gpui::elements::div::Stateful<E> as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:3933:22
+  78: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+  79: gpui::element::AnyElement::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:609:16
+  80: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1844:48
+  81: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &mut F>::call_once
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:310:21
+  82: core::option::Option<T>::map
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/option.rs:1165:29
+  83: <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::next
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:107:26
+  84: <smallvec::SmallVec<A> as core::iter::traits::collect::Extend<<A as smallvec::Array>::Item>>::extend
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2121:41
+  85: <smallvec::SmallVec<A> as core::iter::traits::collect::FromIterator<<A as smallvec::Array>::Item>>::from_iter
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.15.2/src/lib.rs:2105:11
+  86: core::iter::traits::iterator::Iterator::collect
+             at /nix/store/ynpnqrgmjr5qwzn3kgixzhb5bkg8rs7h-rust-default-1.96.0/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2092:9
+  87: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1845:30
+  88: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+  89: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1840:28
+  90: gpui::elements::div::Interactivity::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2185:33
+  91: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3805:35
+  92: gpui::elements::div::Interactivity::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2124:16
+  93: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1834:32
+  94: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+  95: <gpui::elements::div::Div as gpui::element::Element>::request_layout::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1833:32
+  96: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+  97: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+  98: <gpui::elements::div::Div as gpui::element::Element>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1819:5
+  99: gpui::element::Drawable<E>::request_layout
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:321:64
+ 100: gpui::element::Drawable<E>::layout_as_root
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:506:18
+ 101: <gpui::element::Drawable<E> as gpui::element::ElementObject>::layout_as_root
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:583:9
+ 102: gpui::element::AnyElement::layout_as_root
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:638:16
+ 103: gpui::elements::list::StateInner::layout_items
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/list.rs:1225:48
+ 104: gpui::elements::list::StateInner::prepaint_items::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/list.rs:1356:44
+ 105: gpui::window::Window::transact
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3542:22
+ 106: gpui::elements::list::StateInner::prepaint_items
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/list.rs:1348:16
+ 107: <gpui::elements::list::List as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/list.rs:1667:25
+ 108: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 109: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 110: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 111: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1935:39
+ 112: gpui::window::Window::with_element_offset
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3494:20
+ 113: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1925:28
+ 114: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+ 115: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1924:24
+ 116: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2283:42
+ 117: gpui::window::Window::with_content_mask
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3480:13
+ 118: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2272:28
+ 119: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+ 120: gpui::elements::div::Interactivity::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2271:24
+ 121: gpui::window::Window::with_optional_element_state::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3799:39
+ 122: gpui::window::Window::with_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3756:35
+ 123: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3798:18
+ 124: gpui::elements::div::Interactivity::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2244:16
+ 125: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1911:28
+ 126: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+ 127: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+ 128: <gpui::elements::div::Div as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1855:5
+ 129: <gpui::elements::div::Stateful<E> as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:3946:14
+ 130: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 131: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 132: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 133: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1935:39
+ 134: gpui::window::Window::with_element_offset
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3494:20
+ 135: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1925:28
+ 136: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+ 137: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1924:24
+ 138: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2283:42
+ 139: gpui::window::Window::with_content_mask
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3480:13
+ 140: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2272:28
+ 141: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+ 142: gpui::elements::div::Interactivity::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2271:24
+ 143: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3805:35
+ 144: gpui::elements::div::Interactivity::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2244:16
+ 145: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1911:28
+ 146: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+ 147: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+ 148: <gpui::elements::div::Div as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1855:5
+ 149: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 150: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 151: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 152: <gpui::view::ViewElement<V> as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/view.rs:376:29
+ 153: gpui::window::Window::with_rendered_view
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4711:22
+ 154: <gpui::view::ViewElement<V> as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/view.rs:374:20
+ 155: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 156: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 157: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 158: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1935:39
+ 159: gpui::window::Window::with_element_offset
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3494:20
+ 160: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1925:28
+ 161: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+ 162: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1924:24
+ 163: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2283:42
+ 164: gpui::window::Window::with_content_mask
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3480:13
+ 165: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2272:28
+ 166: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3421:26
+ 167: gpui::elements::div::Interactivity::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2271:24
+ 168: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3805:35
+ 169: gpui::elements::div::Interactivity::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2244:16
+ 170: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1911:28
+ 171: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+ 172: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+ 173: <gpui::elements::div::Div as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1855:5
+ 174: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 175: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 176: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 177: <gpui_component::text::text_view::TextView as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/gpui-kit-7f84e25bcfc42aa4/2bb6ce2/crates/ui/src/text/text_view.rs:423:32
+ 178: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 179: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 180: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 181: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1935:39
+ 182: gpui::window::Window::with_element_offset
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3494:20
+ 183: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1925:28
+ 184: gpui::window::Window::with_image_cache
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4727:13
+ 185: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1924:24
+ 186: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2283:42
+ 187: gpui::window::Window::with_content_mask
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3476:26
+ 188: gpui::elements::div::Interactivity::prepaint::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2272:28
+ 189: gpui::window::Window::with_text_style
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3425:13
+ 190: gpui::elements::div::Interactivity::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2271:24
+ 191: gpui::window::Window::with_optional_element_state::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3799:39
+ 192: gpui::window::Window::with_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3756:35
+ 193: gpui::window::Window::with_optional_element_state
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3798:18
+ 194: gpui::elements::div::Interactivity::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:2244:16
+ 195: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1911:28
+ 196: stacksafe::internal::with_protected::{{closure}}
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacksafe-1.0.3/src/internal.rs:43:23
+ 197: stacker::maybe_grow
+             at /Users/ken/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.24/src/lib.rs:57:9
+ 198: <gpui::elements::div::Div as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1855:5
+ 199: <gpui::elements::div::Stateful<E> as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:3946:14
+ 200: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 201: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 202: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 203: <gpui::view::ViewElement<V> as gpui::element::Element>::prepaint::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/view.rs:376:29
+ 204: gpui::window::Window::with_rendered_view
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:4711:22
+ 205: <gpui::view::ViewElement<V> as gpui::element::Element>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/view.rs:374:20
+ 206: gpui::element::Drawable<E>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:404:49
+ 207: <gpui::element::Drawable<E> as gpui::element::ElementObject>::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:568:9
+ 208: gpui::element::AnyElement::prepaint
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/element.rs:617:16
+ 209: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1935:39
+ 210: gpui::window::Window::with_element_offset
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/window.rs:3494:20
+ 211: <gpui::elements::div::Div as gpui::element::Element>::prepaint::{{closure}}::{{closure}}::{{closure}}
+             at /Users/ken/.cargo/git/checkouts/zed-1fe3608fd3cad335/54dea56/crates/gpui/src/elements/div.rs:1925:28
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+fatal runtime error: failed to initiate panic, error 3, aborting
+fish: Job 1, 'cargo run --bin dsh-gui -- \
+  --dsh-repo /Users/ken/Project…' terminated by signal SIGABRT (Abort)

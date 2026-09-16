@@ -28,15 +28,16 @@ impl CodexGui {
         notification: ServerNotification,
         cx: &mut Context<Self>,
     ) {
-        match &notification {
-            ServerNotification::AgentMessageDelta(params) => {
-                self.accumulate_agent_message_delta_log(&params.delta);
-            }
-            _ => {
-                self.flush_agent_message_delta_log();
-                debug!("{:?}", notification);
-            }
-        }
+        // match &notification {
+        //     ServerNotification::AgentMessageDelta(params) => {
+        //         self.accumulate_agent_message_delta_log(&params.delta);
+        //     }
+        //     _ => {
+        //         self.flush_agent_message_delta_log();
+        //         debug!("{:?}", notification);
+        //     }
+        // }
+        debug!("{:?}", notification);
         match notification {
             ServerNotification::ThreadStarted(params) => {
                 self.apply_thread_started(params.thread, cx);

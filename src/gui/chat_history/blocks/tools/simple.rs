@@ -3,9 +3,9 @@ use gpui::{
     prelude::*, px,
 };
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex, spinner::Spinner,
-};
+use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, spinner::Spinner};
+
+use crate::gui::chat_history::motion::ShimmerText;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum ToolStatus {
@@ -25,6 +25,18 @@ pub(super) trait SimpleTool: 'static {
     fn title(&self) -> SharedString;
     fn detail(&self) -> Option<SharedString>;
     fn status(&self) -> ToolStatus;
+    fn detail_style(&self) -> DetailStyle {
+        DetailStyle::Code
+    }
+}
+
+/// How a `SimpleTool`'s detail text is presented.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum DetailStyle {
+    /// Code-like output: monospace, small, height-capped and scrollable.
+    Code,
+    /// Prose: soft-wrapped at a readable size and shown in full.
+    Prose,
 }
 
 #[derive(IntoElement)]
@@ -44,6 +56,7 @@ impl<T: SimpleTool> RenderOnce for SimpleToolElement<T> {
             self.0.detail(),
             self.0.status(),
         )
+        .detail_style(self.0.detail_style())
     }
 }
 
@@ -52,6 +65,7 @@ pub(super) struct ToolFrame {
     icon: IconName,
     title: SharedString,
     detail: Option<(AnyElement, bool)>,
+    detail_style: DetailStyle,
     status: ToolStatus,
     diff: Option<(usize, usize)>,
 }
@@ -67,9 +81,15 @@ impl ToolFrame {
             icon,
             title,
             detail: detail.map(|detail| (detail.into_any_element(), true)),
+            detail_style: DetailStyle::Code,
             status,
             diff: None,
         }
+    }
+
+    pub(super) fn detail_style(mut self, style: DetailStyle) -> Self {
+        self.detail_style = style;
+        self
     }
 
     pub(super) fn diff(mut self, additions: usize, deletions: usize) -> Self {
@@ -86,6 +106,17 @@ impl ToolFrame {
 impl RenderOnce for ToolFrame {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
+        let title = if self.status == ToolStatus::Running && !cx.reduce_motion() {
+            ShimmerText::new(
+                "tool-title-shimmer",
+                self.title,
+                theme.muted_foreground.opacity(0.62),
+                theme.foreground,
+            )
+            .into_any_element()
+        } else {
+            div().child(self.title).into_any_element()
+        };
         h_flex()
             .max_w_full()
             .min_w_0()
@@ -117,11 +148,10 @@ impl RenderOnce for ToolFrame {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().child(self.title))
+                    .child(div().child(title))
                     .when_some(self.detail, |this, (detail, scrollable)| {
                         let detail = div()
                             .id("tool-detail")
-                            .max_h(px(176.))
                             .min_w_0()
                             .rounded_md()
                             .border_1()
@@ -129,13 +159,20 @@ impl RenderOnce for ToolFrame {
                             .bg(theme.background.opacity(0.58))
                             .px_2()
                             // .py_1p5()
-                            .font_family(theme.mono_font_family.clone())
-                            .text_xs()
-                            .line_height(px(18.))
                             .text_color(theme.muted_foreground)
                             .whitespace_normal()
+                            .when(self.detail_style == DetailStyle::Code, |detail| {
+                                detail
+                                    .max_h(px(176.))
+                                    .font_family(theme.mono_font_family.clone())
+                                    .text_xs()
+                                    .line_height(px(18.))
+                            })
+                            .when(self.detail_style == DetailStyle::Prose, |detail| {
+                                detail.text_sm().line_height(px(20.))
+                            })
                             .child(detail);
-                        this.child(if scrollable {
+                        this.child(if scrollable && self.detail_style == DetailStyle::Code {
                             detail.overflow_scrollbar().into_any_element()
                         } else {
                             detail.overflow_hidden().into_any_element()

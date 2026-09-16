@@ -24,8 +24,8 @@ gpui_platform = { git = "https://github.com/Open-Agents-GUI/zed.git", rev = "54d
     "wayland",
     "x11",
 ] }
-gpui-component = { git = "https://github.com/Open-Agents-GUI/gpui-kit.git", rev = "2bb6ce244287f41c8a855aeb4a3fe4c185e26881" }
-gpui-component-assets = { git = "https://github.com/Open-Agents-GUI/gpui-kit.git", rev = "2bb6ce244287f41c8a855aeb4a3fe4c185e26881" }
+gpui-component = { path = "/Users/ken/Codes/Open-Agents-GUI/gpui-kit/crates/ui" }
+gpui-component-assets = { path = "/Users/ken/Codes/Open-Agents-GUI/gpui-kit/crates/assets" }
 ratex-layout = "0.1.14"
 ratex-parser = "0.1.14"
 ratex-svg = { version = "0.1.14", features = ["embed-fonts"] }
