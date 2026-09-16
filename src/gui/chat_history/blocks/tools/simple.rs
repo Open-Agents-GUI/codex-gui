@@ -35,7 +35,7 @@ pub(super) trait SimpleTool: 'static {
 pub(super) enum DetailStyle {
     /// Code-like output: monospace, small, height-capped and scrollable.
     Code,
-    /// Prose: soft-wrapped at a readable size and shown in full.
+    /// Prose: soft-wrapped at a readable size, height-capped and scrollable.
     Prose,
 }
 

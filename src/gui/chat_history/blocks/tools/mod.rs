@@ -57,7 +57,7 @@ impl ToolCall {
         Some(match item {
             ThreadItem::Reasoning {
                 summary, content, ..
-            } => Self::Reasoning(ReasoningTool::new(summary, content, status)),
+            } => Self::Reasoning(ReasoningTool::new(item.id(), summary, content, status)),
             ThreadItem::CommandExecution { .. } => {
                 Self::Command(CommandTool::new(item, status, progress, chat)?)
             }
@@ -104,7 +104,7 @@ impl ToolCall {
 impl RenderOnce for ToolCall {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         match self {
-            Self::Reasoning(reasoning) => SimpleToolElement::new(reasoning).into_any_element(),
+            Self::Reasoning(reasoning) => reasoning.into_any_element(),
             Self::Command(tool) => tool.into_any_element(),
             Self::FileChange(tool) => tool.into_any_element(),
             Self::Mcp(tool) => SimpleToolElement::new(tool).into_any_element(),
