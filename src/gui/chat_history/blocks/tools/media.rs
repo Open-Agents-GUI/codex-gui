@@ -1,8 +1,8 @@
 use codex_app_server_protocol::ThreadItem;
-use gpui::{App, IntoElement, RenderOnce, SharedString, Window};
+use gpui::SharedString;
 use gpui_component::IconName;
 
-use super::simple::{SimpleTool, ToolFrame, ToolStatus, append_progress};
+use super::simple::{SimpleTool, ToolStatus, append_progress};
 
 #[derive(Clone)]
 pub(in crate::gui::chat_history) struct ImageViewTool {
@@ -40,7 +40,7 @@ impl SimpleTool for ImageViewTool {
     }
 }
 
-#[derive(Clone, IntoElement)]
+#[derive(Clone)]
 pub(in crate::gui::chat_history) struct ImageGenerationTool {
     title: SharedString,
     detail: Option<SharedString>,
@@ -83,8 +83,20 @@ impl ImageGenerationTool {
     }
 }
 
-impl RenderOnce for ImageGenerationTool {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        ToolFrame::new(IconName::Palette, self.title, self.detail, self.status)
+impl SimpleTool for ImageGenerationTool {
+    fn icon(&self) -> IconName {
+        IconName::Palette
+    }
+
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+
+    fn detail(&self) -> Option<SharedString> {
+        self.detail.clone()
+    }
+
+    fn status(&self) -> ToolStatus {
+        self.status
     }
 }

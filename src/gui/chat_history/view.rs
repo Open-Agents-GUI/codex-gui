@@ -32,6 +32,7 @@ pub struct ChatHistory {
     chat_subscription: Option<Subscription>,
     expanded_turns: HashSet<String>,
     expanded_tool_groups: HashSet<String>,
+    expanded_tool_calls: HashSet<String>,
     transcript: Entity<TextViewState>,
     transcript_extensions: MarkdownExtensions,
     transcript_blocks: TranscriptBlockStore,
@@ -101,6 +102,7 @@ impl ChatHistory {
             chat_subscription,
             expanded_turns: HashSet::new(),
             expanded_tool_groups: HashSet::new(),
+            expanded_tool_calls: HashSet::new(),
             transcript,
             transcript_extensions,
             transcript_blocks,
@@ -139,6 +141,7 @@ impl ChatHistory {
         self.active_chat = active_chat;
         self.expanded_turns.clear();
         self.expanded_tool_groups.clear();
+        self.expanded_tool_calls.clear();
         self.transcript = new_transcript(cx);
         self.transcript_markdown.clear();
         self.transcript_chat_id = None;
@@ -215,6 +218,20 @@ impl ChatHistory {
     pub(super) fn toggle_tools(&mut self, group_id: &str, cx: &mut Context<Self>) {
         if !self.expanded_tool_groups.remove(group_id) {
             self.expanded_tool_groups.insert(group_id.to_string());
+        }
+        self.rebuild_transcript_remeasuring(Some(BlockId::tool_group(group_id)), cx);
+        cx.notify();
+    }
+
+    /// Fold or unfold one tool row inside `group_id`.
+    pub(super) fn toggle_tool_call(
+        &mut self,
+        group_id: &str,
+        row_id: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.expanded_tool_calls.remove(row_id) {
+            self.expanded_tool_calls.insert(row_id.to_string());
         }
         self.rebuild_transcript_remeasuring(Some(BlockId::tool_group(group_id)), cx);
         cx.notify();
@@ -326,6 +343,7 @@ impl ChatHistory {
                     chat_source,
                     &self.expanded_turns,
                     &self.expanded_tool_groups,
+                    &self.expanded_tool_calls,
                 ),
                 chat.is_loading,
                 chat.transcript_layout_changes_since(self.transcript_layout_revision),

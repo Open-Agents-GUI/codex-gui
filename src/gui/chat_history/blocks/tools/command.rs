@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use codex_app_server_protocol::ThreadItem;
 use gpui::{
-    App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    RenderOnce, SharedString, Styled, WeakEntity, Window, div, list, px,
+    AnyElement, App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState,
+    ParentElement, Render, SharedString, Styled, WeakEntity, Window, div, list, px,
 };
 use gpui_component::{
     IconName,
@@ -12,12 +12,12 @@ use gpui_component::{
 
 use crate::gui::ChatState;
 
-use super::simple::{ToolFrame, ToolStatus};
+use super::simple::{ToolFrame, ToolRow, ToolStatus};
 
 const OUTPUT_MAX_HEIGHT: f32 = 144.;
 const OUTPUT_LINE_HEIGHT: f32 = 18.;
 
-#[derive(Clone, IntoElement)]
+#[derive(Clone)]
 pub(in crate::gui::chat_history) struct CommandTool {
     item_id: String,
     chat: WeakEntity<ChatState>,
@@ -78,8 +78,13 @@ impl CommandTool {
     }
 }
 
-impl RenderOnce for CommandTool {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl CommandTool {
+    pub(super) fn render_row(
+        self,
+        row: ToolRow,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         let state_key = format!("command-output-{}", self.item_id);
         let chat = self.chat.clone();
         let item_id = self.item_id.clone();
@@ -91,7 +96,10 @@ impl RenderOnce for CommandTool {
             state.configure(self.before_output, self.after_output, self.status)
         });
 
-        ToolFrame::new(IconName::SquareTerminal, self.title, None, self.status).custom_detail(state)
+        ToolFrame::new(IconName::SquareTerminal, self.title, None, self.status)
+            .custom_detail(state)
+            .row(row)
+            .into_any_element()
     }
 }
 
@@ -299,7 +307,11 @@ impl Render for CommandOutputState {
                 .size_full(),
             )
             .vertical_scrollbar(&list_state)
-            .child(ScrollableMask::new(gpui::Axis::Vertical, &list_state))
+            // A distinct id per row keeps rows from sharing a gesture axis lock.
+            .child(
+                ScrollableMask::new(gpui::Axis::Vertical, &list_state)
+                    .id(format!("command-output-mask-{}", self.item_id)),
+            )
     }
 }
 

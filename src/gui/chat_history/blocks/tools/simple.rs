@@ -1,11 +1,25 @@
+use std::sync::Arc;
+
 use gpui::{
-    AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div,
-    prelude::*, px,
+    AnyElement, App, ElementId, IntoElement, ParentElement, RenderOnce, SharedString, Styled,
+    Window, div, prelude::*, px,
 };
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, spinner::Spinner};
 
 use crate::gui::chat_history::motion::ShimmerText;
+
+/// Callback that toggles one tool row's disclosure state.
+pub(super) type ToolToggle = Arc<dyn Fn(&mut App) + Send + Sync>;
+
+/// Per-row disclosure state for a tool card. `expanded` shows the detail;
+/// `on_toggle` is present when the row itself can be folded.
+#[derive(Clone)]
+pub(super) struct ToolRow {
+    pub id: String,
+    pub expanded: bool,
+    pub on_toggle: Option<ToolToggle>,
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum ToolStatus {
@@ -40,23 +54,35 @@ pub(super) enum DetailStyle {
 }
 
 #[derive(IntoElement)]
-pub(super) struct SimpleToolElement<T: SimpleTool>(T);
+pub(super) struct SimpleToolElement<T: SimpleTool> {
+    tool: T,
+    row: Option<ToolRow>,
+}
 
 impl<T: SimpleTool> SimpleToolElement<T> {
     pub(super) fn new(tool: T) -> Self {
-        Self(tool)
+        Self { tool, row: None }
+    }
+
+    pub(super) fn row(mut self, row: ToolRow) -> Self {
+        self.row = Some(row);
+        self
     }
 }
 
 impl<T: SimpleTool> RenderOnce for SimpleToolElement<T> {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        ToolFrame::new(
-            self.0.icon(),
-            self.0.title(),
-            self.0.detail(),
-            self.0.status(),
+        let frame = ToolFrame::new(
+            self.tool.icon(),
+            self.tool.title(),
+            self.tool.detail(),
+            self.tool.status(),
         )
-        .detail_style(self.0.detail_style())
+        .detail_style(self.tool.detail_style());
+        match self.row {
+            Some(row) => frame.row(row),
+            None => frame,
+        }
     }
 }
 
@@ -68,6 +94,7 @@ pub(super) struct ToolFrame {
     detail_style: DetailStyle,
     status: ToolStatus,
     diff: Option<(usize, usize)>,
+    row: Option<ToolRow>,
 }
 
 impl ToolFrame {
@@ -84,6 +111,7 @@ impl ToolFrame {
             detail_style: DetailStyle::Code,
             status,
             diff: None,
+            row: None,
         }
     }
 
@@ -99,6 +127,12 @@ impl ToolFrame {
 
     pub(super) fn custom_detail(mut self, detail: impl IntoElement) -> Self {
         self.detail = Some((detail.into_any_element(), false));
+        self
+    }
+
+    /// Attach the row's disclosure state, making the header fold the detail.
+    pub(super) fn row(mut self, row: ToolRow) -> Self {
+        self.row = Some(row);
         self
     }
 }
@@ -117,6 +151,44 @@ impl RenderOnce for ToolFrame {
         } else {
             div().child(self.title).into_any_element()
         };
+
+        let has_detail = self.detail.is_some();
+        let expanded = self.row.as_ref().is_none_or(|row| row.expanded);
+        let toggle = self
+            .row
+            .as_ref()
+            .filter(|_| has_detail)
+            .and_then(|row| row.on_toggle.clone());
+        let row_id = self.row.as_ref().map(|row| row.id.clone());
+
+        let header = h_flex()
+            .w_full()
+            .min_w_0()
+            .items_center()
+            .gap_2()
+            .child(div().min_w_0().flex_1().child(title))
+            .child(render_trailing(self.diff, self.status, cx))
+            .when(toggle.is_some(), |header| {
+                header.child(
+                    Icon::new(if expanded {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .xsmall()
+                    .text_color(theme.muted_foreground),
+                )
+            });
+        let header = if let (Some(id), Some(on_toggle)) = (row_id, toggle) {
+            header
+                .id(ElementId::Name(id.into()))
+                .cursor_pointer()
+                .on_click(move |_, _, cx| on_toggle(cx))
+                .into_any_element()
+        } else {
+            header.into_any_element()
+        };
+
         h_flex()
             .max_w_full()
             .min_w_0()
@@ -148,38 +220,41 @@ impl RenderOnce for ToolFrame {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(div().child(title))
-                    .when_some(self.detail, |this, (detail, scrollable)| {
-                        let detail = div()
-                            .id("tool-detail")
-                            .min_w_0()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(theme.border.opacity(0.7))
-                            .bg(theme.background.opacity(0.58))
-                            .px_2()
-                            // .py_1p5()
-                            .text_color(theme.muted_foreground)
-                            .whitespace_normal()
-                            .when(self.detail_style == DetailStyle::Code, |detail| {
-                                detail
-                                    .max_h(px(176.))
-                                    .font_family(theme.mono_font_family.clone())
-                                    .text_xs()
-                                    .line_height(px(18.))
-                            })
-                            .when(self.detail_style == DetailStyle::Prose, |detail| {
-                                detail.text_sm().line_height(px(20.))
-                            })
-                            .child(detail);
-                        this.child(if scrollable && self.detail_style == DetailStyle::Code {
-                            detail.overflow_scrollbar().into_any_element()
-                        } else {
-                            detail.overflow_hidden().into_any_element()
+                    .child(header)
+                    .when(expanded, |this| {
+                        this.when_some(self.detail, |this, (detail, scrollable)| {
+                            let detail = div()
+                                .id("tool-detail")
+                                .min_w_0()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme.border.opacity(0.7))
+                                .bg(theme.background.opacity(0.58))
+                                .px_2()
+                                // .py_1p5()
+                                .text_color(theme.muted_foreground)
+                                .whitespace_normal()
+                                .when(self.detail_style == DetailStyle::Code, |detail| {
+                                    detail
+                                        .max_h(px(176.))
+                                        .font_family(theme.mono_font_family.clone())
+                                        .text_xs()
+                                        .line_height(px(18.))
+                                })
+                                .when(self.detail_style == DetailStyle::Prose, |detail| {
+                                    detail.text_sm().line_height(px(20.))
+                                })
+                                .child(detail);
+                            this.child(
+                                if scrollable && self.detail_style == DetailStyle::Code {
+                                    detail.overflow_scrollbar().into_any_element()
+                                } else {
+                                    detail.overflow_hidden().into_any_element()
+                                },
+                            )
                         })
                     }),
             )
-            .child(render_trailing(self.diff, self.status, cx))
     }
 }
 

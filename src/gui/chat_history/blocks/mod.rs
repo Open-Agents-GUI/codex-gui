@@ -105,6 +105,8 @@ pub(super) enum HistoryBlock {
     ToolGroup {
         key: String,
         tools: Arc<[ToolCall]>,
+        row_ids: Arc<[String]>,
+        expanded_rows: Arc<[bool]>,
         expanded: bool,
         collapsible: bool,
         tail: bool,
@@ -267,12 +269,16 @@ pub(super) fn render(
         HistoryBlock::ToolGroup {
             key,
             tools,
+            row_ids,
+            expanded_rows,
             expanded,
             collapsible,
             tail,
         } => {
             let history = history.clone();
             let toggle_key = key.clone();
+            let row_toggle_key = key.clone();
+            let row_history = history.clone();
             let block_id = BlockId::tool_group(&key);
             let appeared_at = history
                 .read_with(cx, |history, _| history.block_appeared_at(&block_id))
@@ -280,6 +286,8 @@ pub(super) fn render(
             let content = tools::tool_group(
                 &key,
                 tools,
+                row_ids,
+                expanded_rows,
                 collapsible,
                 tail,
                 expanded,
@@ -288,6 +296,11 @@ pub(super) fn render(
                 move |cx| {
                     let key = toggle_key.clone();
                     let _ = history.update(cx, |history, cx| history.toggle_tools(&key, cx));
+                },
+                move |row_id, cx| {
+                    let key = row_toggle_key.clone();
+                    let _ =
+                        row_history.update(cx, |history, cx| history.toggle_tool_call(&key, row_id, cx));
                 },
             );
             Appearing::new(

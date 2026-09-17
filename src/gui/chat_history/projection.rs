@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use codex_app_server_protocol::{ThreadItem, Turn, TurnPlanStepStatus, TurnStatus};
 use codex_protocol::models::MessagePhase;
@@ -16,6 +16,7 @@ pub(super) fn build_transcript(
     chat_source: WeakEntity<ChatState>,
     expanded_turns: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
+    expanded_tool_calls: &HashSet<String>,
 ) -> TranscriptSnapshot {
     let mut transcript = TranscriptSnapshot::new();
 
@@ -30,6 +31,7 @@ pub(super) fn build_transcript(
                 previous_turn_id.as_deref(),
                 expanded_turns,
                 expanded_tool_groups,
+                expanded_tool_calls,
             );
             if !turn
                 .items
@@ -129,6 +131,7 @@ fn append_turn(
     previous_turn_id: Option<&str>,
     expanded_turns: &HashSet<String>,
     expanded_tool_groups: &HashSet<String>,
+    expanded_tool_calls: &HashSet<String>,
 ) {
     let turn_is_active = matches!(turn.status, TurnStatus::InProgress);
     let Some(fold) = completed_turn_fold(turn) else {
@@ -141,6 +144,7 @@ fn append_turn(
             &turn.items,
             turn_is_active,
             expanded_tool_groups,
+            expanded_tool_calls,
         );
         return;
     };
@@ -154,6 +158,7 @@ fn append_turn(
         &turn.items[..=fold.user_index],
         turn_is_active,
         expanded_tool_groups,
+        expanded_tool_calls,
     );
 
     let expanded = expanded_turns.contains(&turn.id);
@@ -173,6 +178,7 @@ fn append_turn(
             &turn.items[fold.user_index + 1..],
             turn_is_active,
             expanded_tool_groups,
+            expanded_tool_calls,
         );
     } else if let Some(final_answer) = turn.items.get(fold.final_index) {
         append_agent(
@@ -184,10 +190,12 @@ fn append_turn(
             &[],
             false,
             expanded_tool_groups,
+            expanded_tool_calls,
         );
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_items(
     transcript: &mut TranscriptSnapshot,
     chat: &ChatState,
@@ -197,6 +205,7 @@ fn append_items(
     items: &[ThreadItem],
     turn_is_active: bool,
     expanded_tool_groups: &HashSet<String>,
+    expanded_tool_calls: &HashSet<String>,
 ) {
     let mut index = 0;
     while index < items.len() {
@@ -236,6 +245,7 @@ fn append_items(
                     &tools,
                     tool_group_is_tail(items, index + 1, tools_end, turn_is_active),
                     expanded_tool_groups,
+                    expanded_tool_calls,
                 );
                 index = tools_end;
             }
@@ -338,6 +348,7 @@ fn append_items(
                     &tools,
                     tool_group_is_tail(items, index, tools_end, turn_is_active),
                     expanded_tool_groups,
+                    expanded_tool_calls,
                 );
                 index = tools_end;
             }
@@ -346,6 +357,7 @@ fn append_items(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_agent(
     transcript: &mut TranscriptSnapshot,
     chat: &ChatState,
@@ -355,6 +367,7 @@ fn append_agent(
     tools: &[&ThreadItem],
     tail: bool,
     expanded_tool_groups: &HashSet<String>,
+    expanded_tool_calls: &HashSet<String>,
 ) {
     let ThreadItem::AgentMessage {
         id, text, phase, ..
@@ -397,10 +410,12 @@ fn append_agent(
             tools,
             tail,
             expanded_tool_groups,
+            expanded_tool_calls,
         );
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_tool_group(
     transcript: &mut TranscriptSnapshot,
     chat: &ChatState,
@@ -409,13 +424,31 @@ fn append_tool_group(
     tools: &[&ThreadItem],
     tail: bool,
     expanded_tool_groups: &HashSet<String>,
+    expanded_tool_calls: &HashSet<String>,
 ) {
     let block_id = super::blocks::BlockId::tool_group(key);
+    // Each row owns its own disclosure: reasoning is force-expanded while it
+    // streams, everything else opens only when the user has toggled it.
+    let row_ids: Arc<[String]> = tools
+        .iter()
+        .map(|tool| tool.id().to_string())
+        .collect::<Vec<_>>()
+        .into();
+    let expanded_rows: Arc<[bool]> = tools
+        .iter()
+        .map(|tool| {
+            matches!(tool, ThreadItem::Reasoning { id, .. } if chat.item_is_streaming(id))
+                || expanded_tool_calls.contains(tool.id())
+        })
+        .collect::<Vec<_>>()
+        .into();
     transcript.push_block(HistoryBlock::ToolGroup {
         key: key.to_string(),
         tools: tool_calls(tools, &chat.tool_progress, chat_source.clone(), |id| {
             chat.item_is_streaming(id)
         }),
+        row_ids,
+        expanded_rows,
         expanded: expanded_tool_groups.contains(key),
         collapsible: true,
         tail,
@@ -588,7 +621,9 @@ mod tests {
         let items = vec![sleep_tool("tool-1")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
+        assert!(tool_group_is_tail(
+            &items, 0, end, /* turn_is_active */ true
+        ));
     }
 
     #[test]
@@ -596,7 +631,9 @@ mod tests {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
+        assert!(tool_group_is_tail(
+            &items, 0, end, /* turn_is_active */ true
+        ));
     }
 
     #[test]
@@ -604,7 +641,9 @@ mod tests {
         let items = vec![sleep_tool("tool-1"), reasoning("reasoning-1", "")];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
+        assert!(tool_group_is_tail(
+            &items, 0, end, /* turn_is_active */ true
+        ));
     }
 
     #[test]
@@ -615,7 +654,9 @@ mod tests {
         ];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
+        assert!(tool_group_is_tail(
+            &items, 0, end, /* turn_is_active */ true
+        ));
     }
 
     #[test]
@@ -627,7 +668,141 @@ mod tests {
         ];
         let end = tool_group_end(&items, 0);
 
-        assert!(tool_group_is_tail(&items, 0, end, /* turn_is_active */ true));
+        assert!(tool_group_is_tail(
+            &items, 0, end, /* turn_is_active */ true
+        ));
+    }
+
+    /// Measure the per-delta cost the transcript pays for one streamed delta.
+    ///
+    /// `ChatHistory::rebuild_transcript` runs `build_transcript` plus the data
+    /// half of `sync_transcript` (block store replacement, `block_appeared_at`
+    /// rebuild, Markdown comparison) on the UI thread for *every* app-server
+    /// delta, and both are O(history) — a long chat spends more than a frame
+    /// budget per delta and the UI stops keeping up. Run with
+    /// `cargo test --lib profile_transcript_projection_cost -- --nocapture`.
+    #[gpui::test]
+    fn profile_transcript_projection_cost(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext as _;
+        use std::collections::HashMap;
+        use std::time::Instant;
+
+        use crate::gui::chat_history::blocks::BlockId;
+
+        for turn_count in [40usize, 200, 800, 1600] {
+            let chat = cx.new(|_| {
+                ChatState::from_thread(
+                    transcript_fixture(turn_count),
+                    "Thread".into(),
+                    "idle".into(),
+                    Default::default(),
+                )
+            });
+            let source = chat.downgrade();
+            let expanded = HashSet::new();
+
+            let mut store: HashMap<BlockId, HistoryBlock> = HashMap::new();
+            let mut appeared: HashMap<BlockId, Instant> = HashMap::new();
+            let mut markdown = String::new();
+            let now = Instant::now();
+            let iterations = 200u64;
+            let mut build_total = std::time::Duration::ZERO;
+            let mut sync_total = std::time::Duration::ZERO;
+
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let snapshot = chat.read_with(cx, |chat, _| {
+                    build_transcript(chat, source.clone(), &expanded, &expanded, &expanded)
+                });
+                build_total += started.elapsed();
+
+                let started = Instant::now();
+                appeared.retain(|id, _| snapshot.blocks.contains_key(id));
+                for id in snapshot.blocks.keys() {
+                    appeared.entry(id.clone()).or_insert(now);
+                }
+                store = snapshot.blocks;
+                let previous = std::mem::replace(&mut markdown, snapshot.markdown);
+                let unchanged = previous == markdown;
+                sync_total += started.elapsed();
+                std::hint::black_box((&store, &appeared, unchanged));
+            }
+
+            eprintln!(
+                "PROFILE transcript turns={turn_count:<5} blocks={:<5} markdown_bytes={:<8} build_us={:<7} sync_us={:<7} per_delta_us={}",
+                store.len(),
+                markdown.len(),
+                build_total.as_micros() / u128::from(iterations),
+                sync_total.as_micros() / u128::from(iterations),
+                (build_total + sync_total).as_micros() / u128::from(iterations),
+            );
+        }
+    }
+
+    /// A thread of `turn_count` completed turns, each shaped like a real Codex
+    /// turn: a user message, an agent message, four command executions, and a
+    /// reasoning item.
+    fn transcript_fixture(turn_count: usize) -> codex_app_server_protocol::Thread {
+        let mut turns = Vec::new();
+        for t in 0..turn_count {
+            let mut items = vec![
+                serde_json::json!({
+                    "type": "userMessage",
+                    "id": format!("u{t}"),
+                    "content": [{"type": "text", "text": "x".repeat(300)}],
+                }),
+                serde_json::json!({
+                    "type": "agentMessage",
+                    "id": format!("a{t}"),
+                    "text": "y".repeat(4_000),
+                }),
+            ];
+            for k in 0..4 {
+                items.push(serde_json::json!({
+                    "type": "commandExecution",
+                    "id": format!("c{t}-{k}"),
+                    "command": format!("rg -n pattern src/turn{t}/call{k}"),
+                    "cwd": "/tmp",
+                    "source": "agent",
+                    "status": "completed",
+                    "commandActions": [],
+                    "aggregatedOutput": "o".repeat(6_000),
+                    "exitCode": 0,
+                    "durationMs": 12,
+                }));
+            }
+            items.push(serde_json::json!({
+                "type": "reasoning",
+                "id": format!("r{t}"),
+                "summary": ["z".repeat(3_000)],
+                "content": [],
+            }));
+            turns.push(serde_json::json!({
+                "id": format!("turn-{t}"),
+                "items": items,
+                "itemsView": "full",
+                "status": "completed",
+                "startedAt": 0,
+                "completedAt": 1,
+                "durationMs": 1_000,
+            }));
+        }
+
+        serde_json::from_value(serde_json::json!({
+            "id": "thread-1",
+            "sessionId": "session-1",
+            "preview": "",
+            "ephemeral": false,
+            "modelProvider": "openai",
+            "createdAt": 0,
+            "updatedAt": 0,
+            "status": {"type": "idle"},
+            "cwd": "/tmp",
+            "cliVersion": "0.0.0",
+            "source": "vscode",
+            "turns": turns,
+        }))
+        .expect("thread fixture")
     }
 
     fn sleep_tool(id: &str) -> ThreadItem {

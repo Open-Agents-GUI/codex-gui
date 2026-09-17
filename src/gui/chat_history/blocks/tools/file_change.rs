@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use codex_app_server_protocol::{FileUpdateChange, PatchChangeKind, ThreadItem};
 use gpui::{
-    App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    RenderOnce, SharedString, Styled, WeakEntity, Window, div, list, px,
+    AnyElement, App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState,
+    ParentElement, Render, SharedString, Styled, WeakEntity, Window, div, list, px,
 };
 use gpui_component::{
     IconName,
@@ -12,12 +12,12 @@ use gpui_component::{
 
 use crate::gui::ChatState;
 
-use super::simple::{ToolFrame, ToolStatus};
+use super::simple::{ToolFrame, ToolRow, ToolStatus};
 
 const DIFF_MAX_HEIGHT: f32 = 144.;
 const DIFF_LINE_HEIGHT: f32 = 18.;
 
-#[derive(Clone, IntoElement)]
+#[derive(Clone)]
 pub(in crate::gui::chat_history) struct FileChangeTool {
     item_id: String,
     chat: WeakEntity<ChatState>,
@@ -101,10 +101,16 @@ impl FileChangeTool {
     }
 }
 
-impl RenderOnce for FileChangeTool {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl FileChangeTool {
+    pub(super) fn render_row(
+        self,
+        row: ToolRow,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         let frame = ToolFrame::new(IconName::File, self.title, None, self.status)
-            .diff(self.additions, self.deletions);
+            .diff(self.additions, self.deletions)
+            .row(row);
         if !self.show_detail {
             return frame.into_any_element();
         }
@@ -377,7 +383,11 @@ impl Render for FileChangeOutputState {
                 .size_full(),
             )
             .vertical_scrollbar(&list_state)
-            .child(ScrollableMask::new(gpui::Axis::Vertical, &list_state))
+            // A distinct id per row keeps rows from sharing a gesture axis lock.
+            .child(
+                ScrollableMask::new(gpui::Axis::Vertical, &list_state)
+                    .id(format!("file-change-mask-{}", self.item_id)),
+            )
     }
 }
 

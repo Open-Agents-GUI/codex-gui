@@ -16,7 +16,7 @@ use codex_app_server_protocol::{
     CollabAgentToolCallStatus, CommandExecutionStatus, DynamicToolCallStatus, McpToolCallStatus,
     PatchApplyStatus, ThreadItem,
 };
-use gpui::{App, IntoElement, RenderOnce, SharedString, WeakEntity, Window};
+use gpui::{AnyElement, App, IntoElement, SharedString, WeakEntity, Window};
 
 use crate::gui::ChatState;
 use collaboration::CollaborationTool;
@@ -25,14 +25,14 @@ use file_change::FileChangeTool;
 use media::{ImageGenerationTool, ImageViewTool};
 use reasoning::ReasoningTool;
 use remote::{DynamicTool, McpTool};
-use simple::{SimpleTool as _, SimpleToolElement, ToolStatus};
+use simple::{SimpleTool as _, SimpleToolElement, ToolRow, ToolStatus};
 use sleep::SleepTool;
 use web_search::WebSearchTool;
 
 pub use gallery::ToolGallery;
 pub(super) use group::tool_group;
 
-#[derive(Clone, IntoElement)]
+#[derive(Clone)]
 pub(in crate::gui::chat_history) enum ToolCall {
     Reasoning(ReasoningTool),
     Command(CommandTool),
@@ -101,19 +101,22 @@ impl ToolCall {
     }
 }
 
-impl RenderOnce for ToolCall {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+impl ToolCall {
+    /// Render one tool row with its own disclosure state.
+    fn render_row(self, row: ToolRow, window: &mut Window, cx: &mut App) -> AnyElement {
         match self {
-            Self::Reasoning(reasoning) => reasoning.into_any_element(),
-            Self::Command(tool) => tool.into_any_element(),
-            Self::FileChange(tool) => tool.into_any_element(),
-            Self::Mcp(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::Dynamic(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::WebSearch(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::ImageView(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::Collaboration(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::Sleep(tool) => SimpleToolElement::new(tool).into_any_element(),
-            Self::ImageGeneration(tool) => tool.into_any_element(),
+            Self::Reasoning(tool) => tool.render_row(row, window, cx),
+            Self::Command(tool) => tool.render_row(row, window, cx),
+            Self::FileChange(tool) => tool.render_row(row, window, cx),
+            Self::Mcp(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::Dynamic(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::WebSearch(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::ImageView(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::Collaboration(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::Sleep(tool) => SimpleToolElement::new(tool).row(row).into_any_element(),
+            Self::ImageGeneration(tool) => {
+                SimpleToolElement::new(tool).row(row).into_any_element()
+            }
         }
     }
 }
